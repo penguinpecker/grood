@@ -43,9 +43,9 @@ const config: HardhatUserConfig = {
     },
   },
   etherscan: {
-    // Blockscout instances accept any non-empty API key string
     apiKey: {
-      robinhood: "blockscout",
+      robinhood: process.env.EXPLORER_API_KEY || "blockscout",
+      "robinhood-testnet": process.env.EXPLORER_API_KEY || "blockscout",
     },
     customChains: [
       {
@@ -54,6 +54,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://robinhoodchain.blockscout.com/api",
           browserURL: "https://robinhoodchain.blockscout.com",
+        },
+      },
+      {
+        network: "robinhood-testnet",
+        chainId: 46630,
+        urls: {
+          apiURL: "https://explorer.testnet.chain.robinhood.com/api",
+          browserURL: "https://explorer.testnet.chain.robinhood.com",
         },
       },
     ],

@@ -15,7 +15,7 @@ export const RPC_URL =
 export const EXPLORER =
   process.env.NEXT_PUBLIC_EXPLORER ||
   (IS_TESTNET
-    ? "https://robinhoodchain-testnet.blockscout.com"
+    ? "https://explorer.testnet.chain.robinhood.com"
     : "https://robinhoodchain.blockscout.com");
 
 // Paxos USDG on mainnet; on testnet the deploy script's MockUSDG address
