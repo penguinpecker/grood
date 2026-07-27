@@ -68,7 +68,11 @@ const ABI = parseAbi([
 ]);
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY);
-const publicClient = createPublicClient({ chain: robinhoodChain, transport: viemHttp(RPC_URL) });
+const publicClient = createPublicClient({
+  chain: robinhoodChain,
+  transport: viemHttp(RPC_URL),
+  pollingInterval: 500,
+});
 const walletClient = createWalletClient({ account, chain: robinhoodChain, transport: viemHttp(RPC_URL) });
 // The sequencer endpoint is submission-only (rejects reads): when configured,
 // txs are prepared+signed against the regular RPC and only the raw broadcast
@@ -135,8 +139,7 @@ async function fetchBeacon(round, deadlineMs = 60_000) {
         continue; // mirror down — try next
       }
     }
-    await sleep(500);
-  }
+    await sleep(250);  }
   log(`drand round ${round} not obtained within ${deadlineMs}ms — will retry`);
   return null;
 }
@@ -187,15 +190,30 @@ publicClient.watchContractEvent({
   onError: (e) => log("watch error:", e.message),
 });
 
-async function sendResolve(fn, roundId, args) {
+// Nonce/fees can be staged BEFORE the beacon exists so the post-beacon path
+// is a single sign + broadcast (latency-critical for fast resolution).
+async function stageTx() {
+  const [nonce, fees] = await Promise.all([
+    publicClient.getTransactionCount({ address: account.address }),
+    publicClient.estimateFeesPerGas(),
+  ]);
+  return { nonce, ...fees, gas: 2_000_000n };
+}
+
+async function sendResolve(fn, roundId, args, staged) {
+  const overrides = staged ?? {};
   let hash;
-  if (seqClient) {
-    const request = await walletClient.prepareTransactionRequest({
-      to: GROOD_ADDRESS,
-      data: encodeFunctionData({ abi: ABI, functionName: fn, args }),
-    });
-    const serializedTransaction = await walletClient.signTransaction(request);
-    hash = await seqClient.sendRawTransaction({ serializedTransaction });
+  const sender = seqClient ?? walletClient;
+  if (staged) {
+    // Everything known — sign locally and fire the raw tx immediately
+    const serializedTransaction = await walletClient.signTransaction(
+      await walletClient.prepareTransactionRequest({
+        to: GROOD_ADDRESS,
+        data: encodeFunctionData({ abi: ABI, functionName: fn, args }),
+        ...overrides,
+      })
+    );
+    hash = await sender.sendRawTransaction({ serializedTransaction });
   } else {
     hash = await walletClient.writeContract({
       address: GROOD_ADDRESS,
@@ -244,12 +262,15 @@ for (;;) {
       continue;
     }
 
-    // Wait for the pinned beacon, fetch it, resolve
+    // Stage nonce/gas/fees while waiting for the pinned beacon, then the
+    // post-beacon path is fetch → sign → broadcast with zero extra RPCs
+    const staged = await stageTx();
     const beaconTime = DRAND_GENESIS + (Number(drandRound) - 1) * DRAND_PERIOD;
-    if (now < beaconTime) await sleep((beaconTime - now) * 1000);
+    const now2 = Math.floor(Date.now() / 1000);
+    if (now2 < beaconTime) await sleep(Math.max(0, (beaconTime - now2) * 1000 - 500));
     const sig = await fetchBeacon(Number(drandRound));
     if (!sig) continue; // deadline hit — loop re-reads state and retries
-    const hash = await sendResolve("resolveRound", roundId, [roundId, sig]);
+    const hash = await sendResolve("resolveRound", roundId, [roundId, sig], staged);
 
     const after = await publicClient.readContract({
       address: GROOD_ADDRESS,

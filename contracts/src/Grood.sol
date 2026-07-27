@@ -38,11 +38,12 @@ contract Grood is Ownable, ReentrancyGuard {
     ///         never make resolution exceed the block gas limit (~9M gas at
     ///         the cap vs Arbitrum's 32M tx limit).
     uint256 public constant MAX_PER_CELL = 100;
-    /// @notice Extra drand periods beyond the first beacon at-or-after
-    ///         endTime, so the pinned beacon cannot already be public while
-    ///         entries are still admissible under a lagging sequencer clock
-    ///         (5 periods = at least 15s of real-time margin).
-    uint64 public constant BEACON_MARGIN_ROUNDS = 5;
+    /// @notice Seconds between entry close and the pinned beacon's emission.
+    ///         Rounds are aligned to the drand grid so this gap is EXACT every
+    ///         round: resolution lands ~beaconGap+1s after entries close,
+    ///         while the beacon still provably doesn't exist during betting
+    ///         (protects against sequencer clock lag up to beaconGap seconds).
+    uint256 public beaconGap = 2;
 
     IERC20 public immutable usdg;
     DrandBeacon public immutable beacon;
@@ -383,11 +384,12 @@ contract Grood is Ownable, ReentrancyGuard {
     function _startNewRound() internal {
         currentRoundId++;
         uint64 start = uint64(block.timestamp);
-        uint64 end = start + uint64(roundDuration);
-        // First beacon emitted at-or-after `end`, plus a real-time safety
-        // margin: even under sequencer clock lag, entries close strictly
-        // before the pinned beacon exists.
-        uint64 drandRound = beacon.roundAt(end) + BEACON_MARGIN_ROUNDS;
+        // Pin the first beacon emitted at-or-after the nominal round end plus
+        // the safety gap, then align the actual entry close to land exactly
+        // `beaconGap` seconds before that beacon: fast AND provably unknowable
+        // while betting is open. Actual duration = roundDuration + 0..period.
+        uint64 drandRound = beacon.roundAt(start + uint64(roundDuration) + uint64(beaconGap));
+        uint64 end = uint64(beacon.timeOfRound(drandRound)) - uint64(beaconGap);
 
         rounds[currentRoundId] = Round({
             startTime: start,
@@ -412,6 +414,7 @@ contract Grood is Ownable, ReentrancyGuard {
     function setGroodToken(address _v) external onlyOwner { require(_v != address(0), "Zero address"); groodToken = IGroodToken(_v); emit GroodTokenUpdated(_v); }
     function setEntryFee(uint256 _v) external onlyOwner { entryFee = _v; emit ConfigUpdated("entryFee", _v); }
     function setRoundDuration(uint256 _v) external onlyOwner { roundDuration = _v; emit ConfigUpdated("roundDuration", _v); }
+    function setBeaconGap(uint256 _v) external onlyOwner { require(_v >= 1 && _v <= 60, "1-60s"); beaconGap = _v; emit ConfigUpdated("beaconGap", _v); }
     function setGroodPerRound(uint256 _v) external onlyOwner { groodPerRound = _v; emit ConfigUpdated("groodPerRound", _v); }
     function setProtocolFeeBps(uint256 _v) external onlyOwner { require(_v <= 2000, "Fee>20%"); protocolFeeBps = _v; emit ConfigUpdated("protocolFeeBps", _v); }
     function setResolverReward(uint256 _v) external onlyOwner { resolverReward = _v; emit ConfigUpdated("resolverReward", _v); }

@@ -29,7 +29,7 @@ const SIG_BONUS: [bigint, bigint] = [
   0x2c4116eba1899aefcc969a160faa09d164ef5c2dbcef91ad7455ad7c0457d37cn,
 ];
 const ROUND_BONUS = 10_000_013n;
-const BEACON_MARGIN = 5n;
+const BEACON_GAP = 2n;
 const REFUND_DELAY = 30n * 24n * 3600n;
 const VOID_GRACE = 3n * 24n * 3600n;
 
@@ -143,15 +143,16 @@ describe("Grood game", () => {
   }
 
   /**
-   * Advance the game to a fresh round whose endTime lands exactly so that the
-   * pinned drand round == targetRound, letting us resolve with a real signature.
-   * pinned = roundAt(end) + MARGIN = ceil((end-G)/P) + 1 + MARGIN
-   *   →  end = G + (targetRound - 1 - MARGIN) * P
+   * Advance the game to a fresh round pinned to targetRound, letting us
+   * resolve with a real signature. Rounds are grid-aligned: entries close
+   * exactly BEACON_GAP seconds before the pinned beacon's emission, so
+   * start = beaconTime - duration - gap makes the pin land exactly.
    */
   async function openRoundPinnedTo(grood: any, targetRound: bigint) {
     const roundDuration = await grood.roundDuration();
-    const targetEnd = EVMNET_GENESIS + (targetRound - 1n - BEACON_MARGIN) * EVMNET_PERIOD;
-    const targetStart = targetEnd - roundDuration;
+    const beaconTime = EVMNET_GENESIS + (targetRound - 1n) * EVMNET_PERIOD;
+    const targetStart = beaconTime - roundDuration - BEACON_GAP;
+    const targetEnd = beaconTime - BEACON_GAP;
     const stale = await grood.currentRoundId();
     await time.setNextBlockTimestamp(targetStart);
     await grood.skipEmptyRound(stale); // starts the next round at targetStart
@@ -313,12 +314,14 @@ describe("Grood game", () => {
     // Round A: alice + bob deposit, then the round is voided (2 USDG escrow).
     // Timeline is laid out backwards from round B's pinned bonus beacon.
     const roundDuration = await grood.roundDuration();
-    const endB = EVMNET_GENESIS + (ROUND_BONUS - 1n - BEACON_MARGIN) * EVMNET_PERIOD;
-    const tVoid = endB - roundDuration; // voiding starts round B at this timestamp
+    const beaconTimeB = EVMNET_GENESIS + (ROUND_BONUS - 1n) * EVMNET_PERIOD;
+    const endB = beaconTimeB - BEACON_GAP;
+    const tVoid = beaconTimeB - roundDuration - BEACON_GAP; // voiding starts round B here
     const tRequest = tVoid - VOID_GRACE - 2n;
-    const endA = tRequest - REFUND_DELAY - 2n;
+    const endADesired = tRequest - REFUND_DELAY - 8n;
+    const RA = (endADesired + BEACON_GAP - EVMNET_GENESIS + EVMNET_PERIOD - 1n) / EVMNET_PERIOD + 1n;
 
-    const { id: idA } = await openRoundPinnedTo(grood, (endA - EVMNET_GENESIS + EVMNET_PERIOD - 1n) / EVMNET_PERIOD + 1n + BEACON_MARGIN);
+    const { id: idA, targetEnd: endA } = await openRoundPinnedTo(grood, RA);
     await time.setNextBlockTimestamp(endA - 10n);
     await grood.connect(alice).pickCell(1);
     await time.setNextBlockTimestamp(endA - 5n);
