@@ -2,21 +2,18 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { usePrivy, useWallets, useSendTransaction } from "@privy-io/react-auth";
 import { useResolverSSE } from "./useResolverSSE";
-import { createPublicClient, http, fallback, parseUnits, encodeFunctionData, defineChain } from "viem";
+import { createPublicClient, http, fallback, parseUnits, encodeFunctionData } from "viem";
+import {
+  robinhood, CHAIN_ID, RPC_URL, EXPLORER, GRID_ADDR, TOKEN_ADDR, USDG_ADDR,
+  ALCHEMY_RPC, GAS_SPONSOR, SSE_URL, SUPABASE_URL, SUPABASE_ANON, DRAND_CHAIN_HASH,
+} from "@/lib/config";
 
 // ═══════════════════════════════════════════════════════════════
 // GROOD CONTRACT ABI — drand-powered 5x5 grid game (Auto-Pay)
-// Chain: Robinhood Chain Mainnet (4663)
+// Chain: Robinhood Chain (see lib/config.js — env-switchable to testnet)
 // Entry token: USDG (Paxos Global Dollar, 6 decimals)
 // Randomness: drand evmnet beacon, BLS-verified on-chain
 // ═══════════════════════════════════════════════════════════════
-const robinhood = defineChain({
-  id: 4663,
-  name: "Robinhood Chain",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["https://rpc.mainnet.chain.robinhood.com"] } },
-  blockExplorers: { default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" } },
-});
 const GRID_ABI = [
   { name: "currentRoundId", type: "function", stateMutability: "view",
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
@@ -83,22 +80,13 @@ const USDC_ABI = [
     inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] },
 ];
 
-const GRID_ADDR = process.env.NEXT_PUBLIC_GROOD_ADDR || "0x0000000000000000000000000000000000000000";
-const TOKEN_ADDR = process.env.NEXT_PUBLIC_GROOD_TOKEN_ADDR || "0x0000000000000000000000000000000000000000";
-const USDC_ADDR = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"; // USDG (Paxos) on Robinhood Chain
-const CHAIN_ID = 4663;
-const GAS_SPONSOR = process.env.NEXT_PUBLIC_GAS_SPONSOR === "true";
+const USDC_ADDR = USDG_ADDR;
 const CELL_COST = "1";  // 1 USDG
 const CELL_COST_RAW = 1000000n; // 1 USDG in 6 decimals
 const ROUND_DURATION = 60;
 const GRID_SIZE = 5;
 const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON || "";
 const dbHeaders = { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` };
-const EXPLORER = "https://robinhoodchain.blockscout.com";
-const DRAND_CHAIN_HASH = "04f1e9062b8a81f848fded9c12306733282b2727ecced50032187751166ec8c3";
-const SSE_URL = process.env.NEXT_PUBLIC_SSE_URL || "";
 
 const CELL_LABELS = [];
 for (let r = 0; r < GRID_SIZE; r++)
@@ -106,8 +94,6 @@ for (let r = 0; r < GRID_SIZE; r++)
     CELL_LABELS.push(`${String.fromCharCode(65 + r)}${c + 1}`);
 
 // Our own public client — WE control the RPC, not MetaMask
-const ALCHEMY_RPC = process.env.NEXT_PUBLIC_ALCHEMY_RPC || "";
-
 const publicClient = createPublicClient({
   chain: robinhood,
   batch: { multicall: true },
@@ -117,7 +103,7 @@ const publicClient = createPublicClient({
       retryCount: 2,
       retryDelay: 500,
     })] : []),
-    http("https://rpc.mainnet.chain.robinhood.com", {
+    http(RPC_URL, {
       timeout: 8_000,
       retryCount: 1,
       retryDelay: 1_000,

@@ -32,11 +32,21 @@ const USDG_MAINNET = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
 async function main() {
   const [deployer] = await ethers.getSigners();
   const feeRecipient = process.env.FEE_RECIPIENT || deployer.address;
-  const usdgAddress = process.env.USDG_ADDRESS || USDG_MAINNET;
+  let usdgAddress = process.env.USDG_ADDRESS || USDG_MAINNET;
 
   console.log(`Network:       ${network.name} (chainId ${network.config.chainId})`);
   console.log(`Deployer:      ${deployer.address}`);
   console.log(`Fee recipient: ${feeRecipient}`);
+
+  // Testnet has no real USDG — deploy a mock and seed the deployer
+  if (network.name === "robinhood-testnet" && !process.env.USDG_ADDRESS) {
+    const MockUSDG = await ethers.getContractFactory("MockUSDG");
+    const mock = await MockUSDG.deploy();
+    await mock.waitForDeployment();
+    await (await mock.mint(deployer.address, 1_000_000_000n)).wait(); // 1,000 USDG
+    usdgAddress = await mock.getAddress();
+    console.log(`MockUSDG:      ${usdgAddress} (minted 1,000 to deployer)`);
+  }
   console.log(`USDG:          ${usdgAddress}`);
 
   const usdg = await ethers.getContractAt("MockUSDG", usdgAddress);
