@@ -30,6 +30,19 @@ contract Grood is Ownable, ReentrancyGuard {
     ///         players refunded. Beacons are unchained, so any past round
     ///         stays resolvable forever under normal operation.
     uint256 public constant REFUND_DELAY = 30 days;
+    /// @notice Voiding is two-step (request, then execute after this grace
+    ///         period) so a still-obtainable beacon always wins the race
+    ///         against a player trying to void away a known loss.
+    uint256 public constant VOID_GRACE = 3 days;
+    /// @notice Bounds the auto-pay loop in resolveRound so a flooded cell can
+    ///         never make resolution exceed the block gas limit (~9M gas at
+    ///         the cap vs Arbitrum's 32M tx limit).
+    uint256 public constant MAX_PER_CELL = 100;
+    /// @notice Extra drand periods beyond the first beacon at-or-after
+    ///         endTime, so the pinned beacon cannot already be public while
+    ///         entries are still admissible under a lagging sequencer clock
+    ///         (5 periods = at least 15s of real-time margin).
+    uint64 public constant BEACON_MARGIN_ROUNDS = 5;
 
     IERC20 public immutable usdg;
     DrandBeacon public immutable beacon;
@@ -49,6 +62,12 @@ contract Grood is Ownable, ReentrancyGuard {
 
     uint256 public currentRoundId;
     uint256 public accumulatedFees;
+    /// @notice USDG owed to players of voided rounds — reserved and never
+    ///         spendable by payouts, bonus caps, or the resolver tip.
+    uint256 public pendingRefunds;
+    /// @notice Set automatically when a round is voided (drand presumed
+    ///         dead); owner resumes once the beacon is confirmed live again.
+    bool public paused;
 
     struct Round {
         uint64 startTime;
@@ -72,6 +91,10 @@ contract Grood is Ownable, ReentrancyGuard {
     // Liveness backstop
     mapping(uint256 => bool) public roundVoided;
     mapping(uint256 => mapping(address => bool)) public refunded;
+    mapping(uint256 => uint64) public voidRequestedAt;
+    // Exact amount each player paid in, so refunds are precise even if the
+    // owner changes entryFee mid-round
+    mapping(uint256 => mapping(address => uint256)) public paidAmount;
 
     event RoundStarted(uint256 indexed roundId, uint64 startTime, uint64 endTime, uint64 drandRound);
     event CellPicked(uint256 indexed roundId, address indexed player, uint8 cell);
@@ -79,8 +102,10 @@ contract Grood is Ownable, ReentrancyGuard {
     event WinningsPaid(uint256 indexed roundId, address indexed player, uint256 usdcAmount, uint256 zeroAmount);
     event RewardMintFailed(uint256 indexed roundId, address indexed player, uint256 zeroAmount);
     event EmptyRoundSkipped(uint256 indexed roundId);
+    event VoidRequested(uint256 indexed roundId, uint64 executableAt);
     event RoundVoided(uint256 indexed roundId);
     event Refunded(uint256 indexed roundId, address indexed player, uint256 amount);
+    event PausedSet(bool paused);
     event ConfigUpdated(string key, uint256 value);
     event FeeRecipientUpdated(address recipient);
     event GroodTokenUpdated(address token);
@@ -105,15 +130,18 @@ contract Grood is Ownable, ReentrancyGuard {
 
     function pickCell(uint8 cell) external nonReentrant {
         require(cell < GRID_SIZE, "Invalid cell");
+        require(!paused, "Paused");
 
         Round storage round = rounds[currentRoundId];
         require(block.timestamp < round.endTime, "Round ended");
         require(playerCell[currentRoundId][msg.sender] == 0, "Already entered");
+        require(cellPlayers[currentRoundId][cell].length < MAX_PER_CELL, "Cell full");
 
         usdg.safeTransferFrom(msg.sender, address(this), entryFee);
 
         playerCell[currentRoundId][msg.sender] = cell + 1;
         cellPlayers[currentRoundId][cell].push(msg.sender);
+        paidAmount[currentRoundId][msg.sender] = entryFee;
 
         round.totalDeposits += entryFee;
         round.totalPlayers++;
@@ -181,9 +209,11 @@ contract Grood is Ownable, ReentrancyGuard {
 
         if (isBonus) {
             uint256 bonusAmount = distributable * bonusMultiplier;
-            uint256 available = usdg.balanceOf(address(this)) > accumulatedFees
-                ? usdg.balanceOf(address(this)) - accumulatedFees
-                : 0;
+            // Fees, voided-round refund escrow, and the resolver tip are all
+            // reserved — the bonus can never spend money owed to others
+            uint256 reserved = accumulatedFees + pendingRefunds + resolverCut;
+            uint256 bal = usdg.balanceOf(address(this));
+            uint256 available = bal > reserved ? bal - reserved : 0;
             distributable = bonusAmount > available ? available : bonusAmount;
         }
 
@@ -239,31 +269,53 @@ contract Grood is Ownable, ReentrancyGuard {
     // Liveness backstop — only matters if drand itself disappears
     // ══════════════════════════════════════════════════════════════
 
-    /// @notice Void a round that has sat unresolved for REFUND_DELAY after it
-    ///         ended, unfreezing the game and opening refunds. Permissionless.
-    function voidStuckRound(uint256 roundId) external {
+    /// @notice Step 1: flag a round that has sat unresolved for REFUND_DELAY
+    ///         after it ended. Permissionless. resolveRound stays open during
+    ///         the grace window, so if the beacon exists it always wins.
+    function requestVoid(uint256 roundId) external {
         require(roundId == currentRoundId, "Wrong round");
 
         Round storage round = rounds[currentRoundId];
         require(!round.resolved, "Already resolved");
         require(round.totalPlayers > 0, "Use skipEmptyRound");
         require(block.timestamp > uint256(round.endTime) + REFUND_DELAY, "Not stuck");
+        require(voidRequestedAt[roundId] == 0, "Already requested");
+
+        voidRequestedAt[roundId] = uint64(block.timestamp);
+        emit VoidRequested(roundId, uint64(block.timestamp + VOID_GRACE));
+    }
+
+    /// @notice Step 2: after the grace window, void the round, unfreeze the
+    ///         game (paused until owner resumes), and open refunds.
+    function voidStuckRound(uint256 roundId) external {
+        require(roundId == currentRoundId, "Wrong round");
+
+        Round storage round = rounds[currentRoundId];
+        require(!round.resolved, "Already resolved");
+        uint64 requestedAt = voidRequestedAt[roundId];
+        require(requestedAt != 0, "Void not requested");
+        require(block.timestamp > uint256(requestedAt) + VOID_GRACE, "Grace not over");
 
         round.resolved = true;
         roundVoided[currentRoundId] = true;
+        pendingRefunds += round.totalDeposits;
+        // drand is presumed dead — stop taking deposits until the owner
+        // confirms the beacon is live again
+        paused = true;
+        emit PausedSet(true);
         emit RoundVoided(currentRoundId);
         _startNewRound();
     }
 
-    /// @notice Reclaim the entry paid into a voided round.
+    /// @notice Reclaim exactly what you paid into a voided round.
     function refund(uint256 roundId) external nonReentrant {
         require(roundVoided[roundId], "Not voided");
         require(playerCell[roundId][msg.sender] != 0, "Not entered");
         require(!refunded[roundId][msg.sender], "Already refunded");
 
         refunded[roundId][msg.sender] = true;
-        Round storage round = rounds[roundId];
-        uint256 amount = round.totalDeposits / round.totalPlayers;
+        uint256 amount = paidAmount[roundId][msg.sender];
+        pendingRefunds -= amount;
         usdg.safeTransfer(msg.sender, amount);
         emit Refunded(roundId, msg.sender, amount);
     }
@@ -332,9 +384,10 @@ contract Grood is Ownable, ReentrancyGuard {
         currentRoundId++;
         uint64 start = uint64(block.timestamp);
         uint64 end = start + uint64(roundDuration);
-        // First beacon emitted at-or-after `end`, plus one full period of
-        // safety margin: entries provably close before the beacon exists.
-        uint64 drandRound = beacon.roundAt(end) + 1;
+        // First beacon emitted at-or-after `end`, plus a real-time safety
+        // margin: even under sequencer clock lag, entries close strictly
+        // before the pinned beacon exists.
+        uint64 drandRound = beacon.roundAt(end) + BEACON_MARGIN_ROUNDS;
 
         rounds[currentRoundId] = Round({
             startTime: start,
@@ -354,6 +407,7 @@ contract Grood is Ownable, ReentrancyGuard {
     // Admin
     // ══════════════════════════════════════════════════════════════
 
+    function setPaused(bool _v) external onlyOwner { paused = _v; emit PausedSet(_v); }
     function setFeeRecipient(address _v) external onlyOwner { require(_v != address(0), "Zero address"); feeRecipient = _v; emit FeeRecipientUpdated(_v); }
     function setGroodToken(address _v) external onlyOwner { require(_v != address(0), "Zero address"); groodToken = IGroodToken(_v); emit GroodTokenUpdated(_v); }
     function setEntryFee(uint256 _v) external onlyOwner { entryFee = _v; emit ConfigUpdated("entryFee", _v); }

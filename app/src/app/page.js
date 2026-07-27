@@ -141,11 +141,11 @@ export default function HomePage() {
             </div>
           </div>
           <div style={{display:"flex",gap:16,justifyContent:"center",flexWrap:"wrap"}}>
-            {[["ROUND","#30144"],["POT","4.00 USDG","#3B7BF6"],["PLAYERS","4"]].map(([l,v,vc])=>(
+            {[["ROUND","#1"],["POT","4.00 USDG","#3B7BF6"],["PLAYERS","4"]].map(([l,v,vc])=>(
               <div key={l} style={{fontSize:10,color:"#4a5a6e"}}>{l} <b style={{fontFamily:"Orbitron,sans-serif",fontSize:11,color:vc||"#c8d6e5"}}>{v}</b></div>
             ))}
           </div>
-          <div style={{fontSize:9,letterSpacing:2,color:"#4a5a6e"}}>LIVE · ROBINHOOD CHAIN · DRAND SECURED</div>
+          <div style={{fontSize:9,letterSpacing:2,color:"#4a5a6e"}}>SIMULATION · ROBINHOOD CHAIN · DRAND SECURED</div>
         </div>
 
         {/* Code entry — full width below grid */}
@@ -267,7 +267,7 @@ export default function HomePage() {
         </div>
         <div className="four-col-grid" style={{marginBottom:16}}>
           {[
-            {l:"MAX SUPPLY",v:"5,000,000",s:"Minted to winners each round — 20.9K in circulation",bc:"rgba(22,82,240,0.15)",bg:"rgba(22,82,240,0.04)"},
+            {l:"SUPPLY MODEL",v:"EMISSION-ONLY",s:"No pre-mine — minted only to round winners",bc:"rgba(22,82,240,0.15)",bg:"rgba(22,82,240,0.04)",vs:15},
             {l:"EMISSION / ROUND",v:"100",s:"$GROOD split among winning cell players",bc:"rgba(22,82,240,0.15)",bg:"rgba(22,82,240,0.04)",vc:"#3B7BF6"},
             {l:"MOTHERLODE",v:"1000",s:"10× emission on bonus rounds (1 in 100)",bc:"rgba(255,215,0,0.15)",bg:"rgba(255,215,0,0.03)",vc:"#FFD700"},
             {l:"TGE",v:"DEFERRED",s:"Unlocks only after meaningful user milestones",bc:"rgba(0,204,136,0.15)",bg:"rgba(0,204,136,0.03)",vc:"#00cc88",vs:15},
@@ -346,7 +346,9 @@ export default function HomePage() {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
             @gridzerogg
           </a>
-          <a href="#" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3a4a5e",textDecoration:"none",letterSpacing:1}}>CONTRACT</a>
+          {process.env.NEXT_PUBLIC_GROOD_ADDR && (
+            <a href={`https://robinhoodchain.blockscout.com/address/${process.env.NEXT_PUBLIC_GROOD_ADDR}`} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3a4a5e",textDecoration:"none",letterSpacing:1}}>CONTRACT</a>
+          )}
           <a href="https://drand.love" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3a4a5e",textDecoration:"none",letterSpacing:1}}>DRAND</a>
         </div>
         <div style={{fontSize:10,color:"#2a3a4e",letterSpacing:1}}>ON-CHAIN · ROBINHOOD · DRAND</div>

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 // ═══════════════════════════════════════════════════════════════
-// HOW TO PLAY — Base Theme
+// HOW TO PLAY
 // ═══════════════════════════════════════════════════════════════
 
 const GRID_SIZE = 5;

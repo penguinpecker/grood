@@ -200,7 +200,7 @@ export default function TheGrid() {
   const resolverCalledForRound = useRef(0);
   const resolvedRef = useRef(false);
 
-  // ─── Refresh top of history table (picks up TX hash immediately, ZKV hash after finality) ───
+  // ─── Refresh top of history table (picks up TX hash + drand round after resolution) ───
   const refreshHistoryTop = () => {
     fetchRoundHistory(0, HISTORY_PAGE_SIZE).then(fresh => {
       if (!fresh.length) return;

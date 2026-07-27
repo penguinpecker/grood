@@ -39,6 +39,7 @@ const config: HardhatUserConfig = {
       // Just after drand evmnet genesis (2024-09-28T10:57:55Z) so tests can
       // warp forward onto real historical beacon rounds.
       initialDate: "2024-09-28T12:00:00Z",
+      accounts: { count: 120 },
     },
   },
   etherscan: {

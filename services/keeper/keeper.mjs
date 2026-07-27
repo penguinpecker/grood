@@ -20,6 +20,7 @@ import http from "node:http";
 import {
   createPublicClient,
   createWalletClient,
+  custom,
   defineChain,
   http as viemHttp,
   parseAbi,
@@ -61,16 +62,27 @@ const ABI = parseAbi([
   "function rounds(uint256) view returns (uint64 startTime, uint64 endTime, uint256 totalDeposits, uint256 totalPlayers, uint8 winningCell, bool resolved, bool isBonusRound, uint64 drandRound)",
   "function resolveRound(uint256 roundId, uint256[2] signature)",
   "function skipEmptyRound(uint256 roundId)",
+  "function getCellPlayers(uint256 roundId, uint8 cell) view returns (address[])",
   "event CellPicked(uint256 indexed roundId, address indexed player, uint8 cell)",
   "event RoundResolved(uint256 indexed roundId, uint8 winningCell, uint256 winnersCount, bool isBonusRound)",
 ]);
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY);
 const publicClient = createPublicClient({ chain: robinhoodChain, transport: viemHttp(RPC_URL) });
+
+// The sequencer endpoint is submission-only (rejects reads), so route ONLY
+// raw-tx broadcasts there; every other method goes to the regular RPC.
+const readTransport = viemHttp(RPC_URL)({ chain: robinhoodChain });
+const sendTransport = viemHttp(SEQUENCER_RPC)({ chain: robinhoodChain });
 const walletClient = createWalletClient({
   account,
   chain: robinhoodChain,
-  transport: viemHttp(SEQUENCER_RPC),
+  transport: custom({
+    async request(args) {
+      const t = args.method === "eth_sendRawTransaction" ? sendTransport : readTransport;
+      return t.request(args);
+    },
+  }),
 });
 
 // ─── SSE feed (same event shapes the frontend already consumes) ───
@@ -87,7 +99,7 @@ http
       Connection: "keep-alive",
       "Access-Control-Allow-Origin": "*",
     });
-    res.write(`event: connected\ndata: {}\n\n`);
+    res.write(`event: connected\ndata: ${JSON.stringify({ round: lastKnownRoundId })}\n\n`);
     sseClients.add(res);
     req.on("close", () => sseClients.delete(res));
   })
@@ -103,43 +115,59 @@ function log(...args) {
   console.log(new Date().toISOString(), ...args);
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let lastKnownRoundId = null;
 
 // ─── drand fetch with mirror failover ───
-async function fetchBeacon(round) {
-  for (;;) {
+// Bounded: returns null on deadline so the main loop re-reads chain state and
+// keeps logging instead of wedging silently on an API change or drand halt.
+async function fetchBeacon(round, deadlineMs = 60_000) {
+  const until = Date.now() + deadlineMs;
+  while (Date.now() < until) {
     for (const base of DRAND_MIRRORS) {
       try {
         const res = await fetch(`${base}/public/${round}`, { signal: AbortSignal.timeout(4000) });
         if (res.status === 425 || res.status === 404) break; // not emitted yet — wait, don't rotate
-        if (!res.ok) continue;
+        if (!res.ok) {
+          log(`drand ${base} status ${res.status}`);
+          continue;
+        }
         const body = await res.json();
-        if (body.round !== round || !/^[0-9a-f]{128}$/.test(body.signature)) continue;
+        if (body.round !== round || !/^[0-9a-f]{128}$/.test(body.signature)) {
+          log(`drand ${base} shape mismatch: round=${body.round} sigLen=${String(body.signature).length}`);
+          continue;
+        }
         return [BigInt("0x" + body.signature.slice(0, 64)), BigInt("0x" + body.signature.slice(64))];
-      } catch {
+      } catch (e) {
+        log(`drand ${base} error: ${e.message}`);
         continue; // mirror down — try next
       }
     }
     await sleep(500);
   }
+  log(`drand round ${round} not obtained within ${deadlineMs}ms — will retry`);
+  return null;
 }
 
-// ─── optional Supabase mirror ───
-async function mirrorRound(row) {
+// ─── optional Supabase mirror (schema: services/keeper/schema.sql) ───
+async function sb(path, method, body, extraPrefer = "") {
   const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/gz_rounds`, {
-      method: "POST",
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      method,
       headers: {
         apikey: SUPABASE_SERVICE_KEY,
         Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
         "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates",
+        Prefer: `resolution=merge-duplicates${extraPrefer}`,
       },
-      body: JSON.stringify(row),
+      body: JSON.stringify(body),
     });
+    if (!res.ok) {
+      log(`supabase ${method} ${path} failed:`, res.status, await res.text().catch(() => ""));
+    }
   } catch (e) {
-    log("supabase mirror failed:", e.message);
+    log(`supabase ${method} ${path} failed:`, e.message);
   }
 }
 
@@ -154,6 +182,12 @@ publicClient.watchContractEvent({
         roundId: Number(l.args.roundId),
         player: l.args.player,
         cell: Number(l.args.cell),
+      });
+      sb("gz_round_players?on_conflict=round_id,player_address", "POST", {
+        round_id: Number(l.args.roundId),
+        player_address: l.args.player.toLowerCase(),
+        cell_picked: Number(l.args.cell),
+        pick_tx_hash: l.transactionHash,
       });
     }
   },
@@ -189,6 +223,7 @@ for (;;) {
     });
     const [, endTime, , totalPlayers, , resolved, , drandRound] = round;
 
+    lastKnownRoundId = Number(roundId);
     const now = Math.floor(Date.now() / 1000);
     if (now < Number(endTime)) {
       await sleep(Math.min((Number(endTime) - now) * 1000, 5000));
@@ -210,6 +245,7 @@ for (;;) {
     const beaconTime = DRAND_GENESIS + (Number(drandRound) - 1) * DRAND_PERIOD;
     if (now < beaconTime) await sleep((beaconTime - now) * 1000);
     const sig = await fetchBeacon(Number(drandRound));
+    if (!sig) continue; // deadline hit — loop re-reads state and retries
     const hash = await sendResolve("resolveRound", roundId, [roundId, sig]);
 
     const after = await publicClient.readContract({
@@ -229,14 +265,31 @@ for (;;) {
     log(`round ${roundId} resolved → cell ${payload.winningCell}${after[6] ? " MOTHERLODE" : ""} (${hash})`);
     broadcast("round_resolved", payload);
     if (after[6]) broadcast("bonus_round", { roundId: Number(roundId) });
-    await mirrorRound({
+    // Column names match what the frontend reads (see schema.sql)
+    await sb("gz_rounds?on_conflict=round_id", "POST", {
       round_id: Number(roundId),
       winning_cell: payload.winningCell,
-      players: payload.players,
+      total_players: Number(after[3]),
+      total_deposits: after[2].toString(),
       is_bonus: after[6],
       resolve_tx_hash: hash,
       drand_round: Number(drandRound),
     });
+    // Mark winners so user history shows won/lost correctly
+    const winners = await publicClient.readContract({
+      address: GROOD_ADDRESS,
+      abi: ABI,
+      functionName: "getCellPlayers",
+      args: [roundId, payload.winningCell],
+    });
+    if (winners.length > 0) {
+      const list = winners.map((w) => `"${w.toLowerCase()}"`).join(",");
+      await sb(
+        `gz_round_players?round_id=eq.${Number(roundId)}&player_address=in.(${list})`,
+        "PATCH",
+        { is_winner: true }
+      );
+    }
   } catch (e) {
     log("loop error:", e.shortMessage || e.message);
     await sleep(2000);

@@ -23,6 +23,15 @@ const SIG_ROUND_10M: [bigint, bigint] = [
   0x0f7a530796e7ee38600b06da0390634a9b154e3eebc3b323dde2111e1c8ebdf3n,
 ];
 const ROUND_10M = 10_000_000n;
+// Real beacon whose vrf satisfies the Motherlode condition (keccak(vrf,"bonus") % 100 == 0)
+const SIG_BONUS: [bigint, bigint] = [
+  0x13d1b70855d04ea9af3efc4a03378f655459da97819ca4c63427104cf20bd724n,
+  0x2c4116eba1899aefcc969a160faa09d164ef5c2dbcef91ad7455ad7c0457d37cn,
+];
+const ROUND_BONUS = 10_000_013n;
+const BEACON_MARGIN = 5n;
+const REFUND_DELAY = 30n * 24n * 3600n;
+const VOID_GRACE = 3n * 24n * 3600n;
 
 const ENTRY_FEE = 1_000_000n; // 1 USDG
 const RESOLVER_REWARD = 100_000n; // 0.1 USDG
@@ -135,12 +144,13 @@ describe("Grood game", () => {
 
   /**
    * Advance the game to a fresh round whose endTime lands exactly so that the
-   * pinned drand round == ROUND_10M, letting us resolve with a real signature.
-   * pinned = roundAt(end) + 1 = ceil((end-G)/P) + 2  →  end = G + (10M - 2) * P
+   * pinned drand round == targetRound, letting us resolve with a real signature.
+   * pinned = roundAt(end) + MARGIN = ceil((end-G)/P) + 1 + MARGIN
+   *   →  end = G + (targetRound - 1 - MARGIN) * P
    */
-  async function openRoundPinnedTo10M(grood: any) {
+  async function openRoundPinnedTo(grood: any, targetRound: bigint) {
     const roundDuration = await grood.roundDuration();
-    const targetEnd = EVMNET_GENESIS + (ROUND_10M - 2n) * EVMNET_PERIOD;
+    const targetEnd = EVMNET_GENESIS + (targetRound - 1n - BEACON_MARGIN) * EVMNET_PERIOD;
     const targetStart = targetEnd - roundDuration;
     const stale = await grood.currentRoundId();
     await time.setNextBlockTimestamp(targetStart);
@@ -148,9 +158,10 @@ describe("Grood game", () => {
     const id = await grood.currentRoundId();
     const round = await grood.rounds(id);
     expect(round.endTime).to.equal(targetEnd);
-    expect(round.drandRound).to.equal(ROUND_10M);
+    expect(round.drandRound).to.equal(targetRound);
     return { id, targetEnd };
   }
+  const openRoundPinnedTo10M = (grood: any) => openRoundPinnedTo(grood, ROUND_10M);
 
   it("pins a drand round strictly after entries close", async () => {
     const { grood, beacon } = await loadFixture(deployAll);
@@ -253,29 +264,125 @@ describe("Grood game", () => {
     expect(await grood.currentRoundId()).to.equal(id + 1n);
   });
 
-  it("voids a stuck round after REFUND_DELAY and refunds players", async () => {
-    const { alice, bob, usdg, grood } = await loadFixture(deployAll);
+  it("voids a stuck round (request + grace) and refunds exactly what each player paid", async () => {
+    const { owner, alice, bob, usdg, grood } = await loadFixture(deployAll);
     const { id, targetEnd } = await openRoundPinnedTo10M(grood);
     await time.setNextBlockTimestamp(targetEnd - 10n);
     await grood.connect(alice).pickCell(1);
+    // Owner doubles the entry fee mid-round; bob pays the new price
+    await grood.connect(owner).setEntryFee(2n * ENTRY_FEE);
     await time.setNextBlockTimestamp(targetEnd - 5n);
     await grood.connect(bob).pickCell(2);
 
-    // Too early to void
+    // Too early to request a void
     await time.setNextBlockTimestamp(targetEnd + 1n);
-    await expect(grood.voidStuckRound(id)).to.be.revertedWith("Not stuck");
+    await expect(grood.requestVoid(id)).to.be.revertedWith("Not stuck");
+    // Cannot void without a request
+    await expect(grood.voidStuckRound(id)).to.be.revertedWith("Void not requested");
 
-    await time.setNextBlockTimestamp(targetEnd + 30n * 24n * 3600n + 1n);
+    const tRequest = targetEnd + REFUND_DELAY + 1n;
+    await time.setNextBlockTimestamp(tRequest);
+    await grood.connect(alice).requestVoid(id);
+    // Grace window not over yet
+    await expect(grood.voidStuckRound(id)).to.be.revertedWith("Grace not over");
+
+    await time.setNextBlockTimestamp(tRequest + VOID_GRACE + 1n);
     await grood.connect(alice).voidStuckRound(id);
     expect(await grood.currentRoundId()).to.equal(id + 1n);
+    // Void pauses entries and reserves the escrow
+    expect(await grood.paused()).to.equal(true);
+    expect(await grood.pendingRefunds()).to.equal(3n * ENTRY_FEE);
 
-    const before = await usdg.balanceOf(alice.address);
+    const beforeA = await usdg.balanceOf(alice.address);
     await grood.connect(alice).refund(id);
-    expect(await usdg.balanceOf(alice.address)).to.equal(before + ENTRY_FEE);
+    expect(await usdg.balanceOf(alice.address)).to.equal(beforeA + ENTRY_FEE);
     await expect(grood.connect(alice).refund(id)).to.be.revertedWith("Already refunded");
+    const beforeB = await usdg.balanceOf(bob.address);
     await grood.connect(bob).refund(id);
-    // Voided round pays no winners
+    expect(await usdg.balanceOf(bob.address)).to.equal(beforeB + 2n * ENTRY_FEE);
+    expect(await grood.pendingRefunds()).to.equal(0n);
+    // Voided round pays no winners; owner can resume the game
     expect(await grood.isWinner(id, alice.address)).to.equal(false);
+    await grood.connect(owner).setPaused(false);
+    expect(await grood.paused()).to.equal(false);
+  });
+
+  it("REGRESSION: a Motherlode round cannot raid the refund escrow of a voided round", async () => {
+    const { owner, alice, bob, carol, usdg, grood } = await loadFixture(deployAll);
+
+    // Round A: alice + bob deposit, then the round is voided (2 USDG escrow).
+    // Timeline is laid out backwards from round B's pinned bonus beacon.
+    const roundDuration = await grood.roundDuration();
+    const endB = EVMNET_GENESIS + (ROUND_BONUS - 1n - BEACON_MARGIN) * EVMNET_PERIOD;
+    const tVoid = endB - roundDuration; // voiding starts round B at this timestamp
+    const tRequest = tVoid - VOID_GRACE - 2n;
+    const endA = tRequest - REFUND_DELAY - 2n;
+
+    const { id: idA } = await openRoundPinnedTo(grood, (endA - EVMNET_GENESIS + EVMNET_PERIOD - 1n) / EVMNET_PERIOD + 1n + BEACON_MARGIN);
+    await time.setNextBlockTimestamp(endA - 10n);
+    await grood.connect(alice).pickCell(1);
+    await time.setNextBlockTimestamp(endA - 5n);
+    await grood.connect(bob).pickCell(2);
+
+    await time.setNextBlockTimestamp(tRequest);
+    await grood.requestVoid(idA);
+    await time.setNextBlockTimestamp(tVoid);
+    await grood.voidStuckRound(idA);
+    expect(await grood.pendingRefunds()).to.equal(2n * ENTRY_FEE);
+
+    // Round B pinned to the real bonus beacon; carol is the only player
+    const idB = await grood.currentRoundId();
+    const roundB = await grood.rounds(idB);
+    expect(roundB.drandRound).to.equal(ROUND_BONUS);
+    await grood.connect(owner).setPaused(false);
+    await time.setNextBlockTimestamp(endB - 10n);
+    await grood.connect(carol).pickCell(0);
+    await time.setNextBlockTimestamp(endB + 1n);
+    await grood.connect(owner).resolveRound(idB, SIG_BONUS);
+
+    const resolved = await grood.rounds(idB);
+    expect(resolved.isBonusRound).to.equal(true);
+    // Carol's 10x bonus is capped at her own round's distributable — the
+    // escrow (2 USDG) and fees stay untouched
+    const fee = (ENTRY_FEE * 500n) / 10_000n;
+    const distributable = ENTRY_FEE - fee - RESOLVER_REWARD;
+    expect(await grood.roundUsdcPerWinner(idB)).to.equal(distributable);
+
+    // Every round-A player can still get their full refund
+    const beforeA = await usdg.balanceOf(alice.address);
+    await grood.connect(alice).refund(idA);
+    expect(await usdg.balanceOf(alice.address)).to.equal(beforeA + ENTRY_FEE);
+    const beforeB = await usdg.balanceOf(bob.address);
+    await grood.connect(bob).refund(idA);
+    expect(await usdg.balanceOf(bob.address)).to.equal(beforeB + ENTRY_FEE);
+  });
+
+  it("caps entries per cell so resolution gas is bounded", async () => {
+    const { owner, usdg, grood } = await loadFixture(deployAll);
+    // Long round so 300 auto-mined setup txs (+1s each) fit inside the window
+    await grood.connect(owner).setRoundDuration(600);
+    const { targetEnd } = await openRoundPinnedTo10M(grood);
+    const signers = await ethers.getSigners();
+    // Signers 4..104 fill cell 0 to MAX_PER_CELL (100)
+    for (let i = 0; i < 100; i++) {
+      const p = signers[4 + i];
+      await usdg.mint(p.address, ENTRY_FEE);
+      await usdg.connect(p).approve(await grood.getAddress(), ENTRY_FEE);
+      await grood.connect(p).pickCell(0);
+    }
+    const counts = await grood.getCellCounts(await grood.currentRoundId());
+    expect(counts[0]).to.equal(100n);
+    const extra = signers[110];
+    await usdg.mint(extra.address, ENTRY_FEE);
+    await usdg.connect(extra).approve(await grood.getAddress(), ENTRY_FEE);
+    await expect(grood.connect(extra).pickCell(0)).to.be.revertedWith("Cell full");
+    // The full cell resolves fine
+    await time.setNextBlockTimestamp(targetEnd + 1n);
+    const tx = await grood.connect(owner).resolveRound(await grood.currentRoundId(), SIG_ROUND_10M);
+    const receipt = await tx.wait();
+    expect(receipt!.gasUsed).to.be.lessThan(15_000_000n);
+    // eslint-disable-next-line no-console
+    console.log(`      resolveRound gas with 100 winners on one cell: ${receipt!.gasUsed}`);
   });
 
   it("a broken reward token cannot block USDG payouts", async () => {
