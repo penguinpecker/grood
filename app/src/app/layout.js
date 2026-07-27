@@ -2,8 +2,8 @@ import Providers from "@/components/Providers";
 import "./globals.css";
 
 export const metadata = {
-  title: "GridZero V3 — 5×5 On-Chain Game",
-  description: "5×5 grid game on Base. Pick a cell, win USDC + ZERO tokens. Real Groth16 VRF proofs.",
+  title: "Grood — 5×5 On-Chain Game",
+  description: "5×5 grid game on Robinhood Chain. Pick a cell, win USDG + GROOD tokens. Randomness by drand, verified on-chain.",
 };
 
 export default function RootLayout({ children }) {

@@ -1,6 +1,14 @@
 "use client";
 import { PrivyProvider } from "@privy-io/react-auth";
-import { base } from "viem/chains";
+import { defineChain } from "viem";
+
+const robinhood = defineChain({
+  id: 4663,
+  name: "Robinhood Chain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["https://rpc.mainnet.chain.robinhood.com"] } },
+  blockExplorers: { default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" } },
+});
 
 export default function Providers({ children }) {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -25,8 +33,8 @@ export default function Providers({ children }) {
           createOnLogin: "all-users",
           showWalletUIs: false,
         },
-        defaultChain: base,
-        supportedChains: [base],
+        defaultChain: robinhood,
+        supportedChains: [robinhood],
         loginMethods: ["twitter", "google", "wallet"],
       }}
     >

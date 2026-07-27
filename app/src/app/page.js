@@ -19,7 +19,7 @@ function LogoIcon({ size = 28 }) {
       <line x1="50" y1="4" x2="50" y2="76" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5"/>
       <line x1="4" y1="30" x2="76" y2="30" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5"/>
       <line x1="4" y1="50" x2="76" y2="50" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5"/>
-      <text x="40" y="56" textAnchor="middle" fontFamily="Orbitron,sans-serif" fontWeight="900" fontSize="48" fill="white" letterSpacing="-2">0</text>
+      <text x="40" y="56" textAnchor="middle" fontFamily="Orbitron,sans-serif" fontWeight="900" fontSize="48" fill="white" letterSpacing="-2">G</text>
     </svg>
   );
 }
@@ -71,11 +71,11 @@ export default function HomePage() {
 
   const ZK_STEPS = [
     "Round ends — block timestamp ≥ endTime",
-    "Resolver generates Groth16 VRF proof",
-    "Kurier optimistic verify — sub-second",
-    "resolveRound() called on Base",
+    "drand network emits the pinned beacon",
+    "Anyone fetches the public BLS signature",
+    "resolveRound() verifies it on Robinhood",
     "Winners auto-paid in same transaction",
-    "Proof submitted to zkVerify — finalized",
+    "Beacon auditable forever — drand archive",
   ];
 
   const scanBg = `linear-gradient(180deg,transparent ${scanY-2}%,rgba(22,82,240,0.1) ${scanY-1}%,rgba(22,82,240,0.3) ${scanY}%,rgba(22,82,240,0.1) ${scanY+1}%,transparent ${scanY+2}%)`;
@@ -89,8 +89,8 @@ export default function HomePage() {
       <header style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",padding:"0 24px",height:56,borderBottom:"1px solid rgba(22,82,240,0.12)",background:"rgba(6,10,20,0.97)",zIndex:100,position:"sticky",top:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>router.push("/")}>
           <LogoIcon size={26}/>
-          <span style={{fontFamily:"Orbitron,sans-serif",fontWeight:900,fontSize:16,color:"#3B7BF6",letterSpacing:2}}>GRID</span>
-          <span style={{fontFamily:"Orbitron,sans-serif",fontWeight:500,fontSize:16,color:"#e0e8f0",letterSpacing:2}}>ZERO</span>
+          <span style={{fontFamily:"Orbitron,sans-serif",fontWeight:900,fontSize:16,color:"#3B7BF6",letterSpacing:2}}>GR</span>
+          <span style={{fontFamily:"Orbitron,sans-serif",fontWeight:500,fontSize:16,color:"#e0e8f0",letterSpacing:2}}>OOD</span>
           <div style={{width:6,height:6,borderRadius:"50%",background:"#3B7BF6",boxShadow:"0 0 6px #3B7BF6",animation:"pulse 2s ease-in-out infinite",marginLeft:4}}/>
         </div>
         <nav style={{display:"flex",alignItems:"center",gap:4}}>
@@ -105,16 +105,16 @@ export default function HomePage() {
 
         {/* Title block — centered */}
         <div style={{marginBottom:32,textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center"}}>
-          <div style={{fontSize:10,letterSpacing:3,color:"#3B7BF6",fontWeight:700,marginBottom:14}}>● LIVE ON BASE MAINNET</div>
+          <div style={{fontSize:10,letterSpacing:3,color:"#3B7BF6",fontWeight:700,marginBottom:14}}>● ON ROBINHOOD CHAIN</div>
           <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:900,lineHeight:1.1,letterSpacing:1,marginBottom:18,fontSize:"clamp(36px,9vw,64px)"}}>
             <div style={{color:"#3B7BF6"}}>ONCHAIN</div>
             <div style={{color:"#e0e8f0"}}>BETTING</div>
           </div>
           <div style={{fontSize:13,color:"#7a8b9e",lineHeight:1.8,marginBottom:22,maxWidth:520}}>
-            Pick a cell on the 5×5 grid. A Groth16 ZK proof selects the winner from occupied cells only. Winners share the pot — or keep everything if they picked alone.
+            Pick a cell on the 5×5 grid. A drand randomness beacon — verified on-chain — selects the winner from occupied cells only. Winners share the pot — or keep everything if they picked alone.
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-            {["1 USDC per round","60s rounds","ZK proof every round","Auto-pay on resolve"].map(c=>(
+            {["1 USDG per round","30s rounds","drand beacon every round","Auto-pay on resolve"].map(c=>(
               <div key={c} style={{fontSize:10,padding:"4px 10px",borderRadius:4,background:"rgba(22,82,240,0.07)",border:"1px solid rgba(22,82,240,0.15)",color:"#7a8b9e"}}>{c}</div>
             ))}
           </div>
@@ -141,11 +141,11 @@ export default function HomePage() {
             </div>
           </div>
           <div style={{display:"flex",gap:16,justifyContent:"center",flexWrap:"wrap"}}>
-            {[["ROUND","#30144"],["POT","4.00 USDC","#3B7BF6"],["PLAYERS","4"]].map(([l,v,vc])=>(
+            {[["ROUND","#30144"],["POT","4.00 USDG","#3B7BF6"],["PLAYERS","4"]].map(([l,v,vc])=>(
               <div key={l} style={{fontSize:10,color:"#4a5a6e"}}>{l} <b style={{fontFamily:"Orbitron,sans-serif",fontSize:11,color:vc||"#c8d6e5"}}>{v}</b></div>
             ))}
           </div>
-          <div style={{fontSize:9,letterSpacing:2,color:"#4a5a6e"}}>LIVE · BASE MAINNET · VRF SECURED</div>
+          <div style={{fontSize:9,letterSpacing:2,color:"#4a5a6e"}}>LIVE · ROBINHOOD CHAIN · DRAND SECURED</div>
         </div>
 
         {/* Code entry — full width below grid */}
@@ -177,7 +177,7 @@ export default function HomePage() {
                   <span style={{fontSize:9,color:"#4a5a6e",letterSpacing:2}}>OR</span>
                   <div style={{flex:1,height:1,background:"rgba(22,82,240,0.1)"}}/>
                 </div>
-                <button onClick={()=>router.push("/play")} style={{width:"100%",fontFamily:"JetBrains Mono,monospace",fontSize:10,padding:10,borderRadius:6,border:"1px solid rgba(22,82,240,0.18)",background:"rgba(22,82,240,0.04)",color:"#5a6a7e",cursor:"pointer",letterSpacing:1}}>PLAY WITH USDC →</button>
+                <button onClick={()=>router.push("/play")} style={{width:"100%",fontFamily:"JetBrains Mono,monospace",fontSize:10,padding:10,borderRadius:6,border:"1px solid rgba(22,82,240,0.18)",background:"rgba(22,82,240,0.04)",color:"#5a6a7e",cursor:"pointer",letterSpacing:1}}>PLAY WITH USDG →</button>
               </div>
             </>
           ) : (
@@ -207,9 +207,9 @@ export default function HomePage() {
         <div className="steps-grid">
           {[
             {n:"01",icon:"🔐",t:"LOGIN",d:"Sign in with email, Google, or wallet. Privy creates an embedded wallet instantly — no seed phrase needed."},
-            {n:"02",icon:"⬡",t:"PICK A CELL",d:"Choose any cell on the 5×5 grid. Costs 1 USDC. Multiple players can pick the same cell — they'll split if it wins."},
-            {n:"03",icon:"🔬",t:"ZK PROOF",d:"When the 60s round ends, a Groth16 VRF proof runs. The winning cell is picked from occupied cells only — verified on-chain."},
-            {n:"04",icon:"💰",t:"GET PAID",d:"Winners are paid automatically during resolution. No claim step. USDC goes straight to your wallet plus $ZERO rewards."},
+            {n:"02",icon:"⬡",t:"PICK A CELL",d:"Choose any cell on the 5×5 grid. Costs 1 USDG. Multiple players can pick the same cell — they'll split if it wins."},
+            {n:"03",icon:"🎲",t:"DRAND BEACON",d:"When the 30s round ends, the drand beacon pinned at round start is emitted. Its BLS signature is verified on-chain and picks the winner from occupied cells only."},
+            {n:"04",icon:"💰",t:"GET PAID",d:"Winners are paid automatically during resolution. No claim step. USDG goes straight to your wallet plus $GROOD rewards."},
           ].map(({n,icon,t,d})=>(
             <div key={n} style={{padding:20,border:"1px solid rgba(22,82,240,0.15)",borderRadius:8,background:"rgba(22,82,240,0.03)",display:"flex",flexDirection:"column",gap:10}}>
               <span style={{fontFamily:"Orbitron,sans-serif",fontSize:10,fontWeight:700,color:"#1652F0",background:"rgba(22,82,240,0.12)",borderRadius:4,padding:"2px 7px",display:"inline-block",letterSpacing:1,alignSelf:"flex-start"}}>{n}</span>
@@ -231,11 +231,11 @@ export default function HomePage() {
         </div>
         <div className="two-col-grid">
           <MechCard title="PAYOUT MATH">
-            <p style={{fontSize:11,color:"#7a8b9e",lineHeight:1.75,margin:0}}>Every player adds 1 USDC to the pot. A 5% protocol fee and 0.1 USDC resolver reward are deducted, then the rest goes to winners on the winning cell.</p>
+            <p style={{fontSize:11,color:"#7a8b9e",lineHeight:1.75,margin:0}}>Every player adds 1 USDG to the pot. A 5% protocol fee and 0.1 USDG resolver reward are deducted, then the rest goes to winners on the winning cell.</p>
             <div style={{background:"rgba(0,0,0,0.3)",border:"1px solid rgba(22,82,240,0.1)",borderRadius:6,padding:"10px 12px",fontSize:11,color:"#4a5a6e",lineHeight:1.9}}>
-              pool = <b style={{color:"#3B7BF6"}}>N</b> × 1 USDC<br/>
+              pool = <b style={{color:"#3B7BF6"}}>N</b> × 1 USDG<br/>
               fee = pool × <b style={{color:"#3B7BF6"}}>5%</b><br/>
-              distributable = pool − fee − <b style={{color:"#3B7BF6"}}>0.1 USDC</b><br/>
+              distributable = pool − fee − <b style={{color:"#3B7BF6"}}>0.1 USDG</b><br/>
               each winner = distributable ÷ <b style={{color:"#00cc88"}}>winners on cell</b>
             </div>
           </MechCard>
@@ -243,32 +243,32 @@ export default function HomePage() {
             <p style={{fontSize:11,color:"#7a8b9e",lineHeight:1.75,margin:0}}>Cells with many players give you better win odds but smaller payouts. Lonely cells pay the entire pot if they win.</p>
             <div style={{background:"rgba(0,0,0,0.3)",border:"1px solid rgba(22,82,240,0.1)",borderRadius:6,padding:"10px 12px",fontSize:11,color:"#4a5a6e",lineHeight:1.9}}>
               <span style={{color:"#4a5a6e"}}>{`// 20 players, 3 on winning cell`}</span><br/>
-              pool = <b style={{color:"#3B7BF6"}}>20 USDC</b><br/>
-              distributable ≈ <b style={{color:"#3B7BF6"}}>18.9 USDC</b><br/>
-              each winner = <b style={{color:"#00cc88"}}>+6.30 USDC</b>
+              pool = <b style={{color:"#3B7BF6"}}>20 USDG</b><br/>
+              distributable ≈ <b style={{color:"#3B7BF6"}}>18.9 USDG</b><br/>
+              each winner = <b style={{color:"#00cc88"}}>+6.30 USDG</b>
             </div>
           </MechCard>
-          <MechCard title="$ZERO REWARDS">
-            <p style={{fontSize:11,color:"#7a8b9e",lineHeight:1.75,margin:0}}>Every resolved round mints <b style={{color:"#e0e8f0"}}>$ZERO tokens</b> to winners on top of USDC. TGE is deferred until meaningful user milestones — it&apos;s a gameplay reward, not a speculative asset.</p>
+          <MechCard title="$GROOD REWARDS">
+            <p style={{fontSize:11,color:"#7a8b9e",lineHeight:1.75,margin:0}}>Every resolved round mints <b style={{color:"#e0e8f0"}}>$GROOD tokens</b> to winners on top of USDG. TGE is deferred until meaningful user milestones — it&apos;s a gameplay reward, not a speculative asset.</p>
           </MechCard>
           <MechCard title="🔥 MOTHERLODE ROUNDS" gold>
-            <p style={{fontSize:11,color:"#7a8b9e",lineHeight:1.75,margin:0}}>1 in 100 rounds is a Motherlode. Winners get <b style={{color:"#FFD700"}}>10× the normal USDC payout</b> plus 10× $ZERO emission. Determined by secondary VRF derivation.</p>
+            <p style={{fontSize:11,color:"#7a8b9e",lineHeight:1.75,margin:0}}>1 in 100 rounds is a Motherlode. Winners get <b style={{color:"#FFD700"}}>10× the normal USDG payout</b> plus 10× $GROOD emission. Determined by a secondary hash of the drand beacon.</p>
           </MechCard>
         </div>
       </section>
 
       <Divider/>
 
-      {/* ── $ZERO ── */}
+      {/* ── $GROOD ── */}
       <section style={{position:"relative",zIndex:5,padding:"60px 20px",maxWidth:960,margin:"0 auto"}}>
         <div style={{textAlign:"center",marginBottom:40}}>
           <div style={{fontSize:10,letterSpacing:3,color:"#3B7BF6",fontWeight:700,marginBottom:8}}>TOKEN</div>
-          <div style={{fontFamily:"Orbitron,sans-serif",fontSize:24,fontWeight:700,letterSpacing:1,color:"#e0e8f0"}}>$ZERO</div>
+          <div style={{fontFamily:"Orbitron,sans-serif",fontSize:24,fontWeight:700,letterSpacing:1,color:"#e0e8f0"}}>$GROOD</div>
         </div>
         <div className="four-col-grid" style={{marginBottom:16}}>
           {[
             {l:"MAX SUPPLY",v:"5,000,000",s:"Minted to winners each round — 20.9K in circulation",bc:"rgba(22,82,240,0.15)",bg:"rgba(22,82,240,0.04)"},
-            {l:"EMISSION / ROUND",v:"100",s:"$ZERO split among winning cell players",bc:"rgba(22,82,240,0.15)",bg:"rgba(22,82,240,0.04)",vc:"#3B7BF6"},
+            {l:"EMISSION / ROUND",v:"100",s:"$GROOD split among winning cell players",bc:"rgba(22,82,240,0.15)",bg:"rgba(22,82,240,0.04)",vc:"#3B7BF6"},
             {l:"MOTHERLODE",v:"1000",s:"10× emission on bonus rounds (1 in 100)",bc:"rgba(255,215,0,0.15)",bg:"rgba(255,215,0,0.03)",vc:"#FFD700"},
             {l:"TGE",v:"DEFERRED",s:"Unlocks only after meaningful user milestones",bc:"rgba(0,204,136,0.15)",bg:"rgba(0,204,136,0.03)",vc:"#00cc88",vs:15},
           ].map(({l,v,s,bc,bg,vc,vs})=>(
@@ -283,9 +283,9 @@ export default function HomePage() {
           <div style={{padding:20,border:"1px solid rgba(22,82,240,0.15)",borderRadius:8,background:"rgba(22,82,240,0.03)",display:"flex",flexDirection:"column",gap:12}}>
             <div style={{fontFamily:"Orbitron,sans-serif",fontSize:11,fontWeight:700,letterSpacing:1,color:"#e0e8f0"}}>HOW YOU EARN</div>
             {[
-              {n:"01",text:<>Pick the winning cell — <b style={{color:"#e0e8f0"}}>100 $ZERO</b> split among all players on that cell</>},
-              {n:"02",text:<>Pick alone on winning cell — keep the entire <b style={{color:"#e0e8f0"}}>100 $ZERO</b> yourself</>},
-              {n:"🔥",text:<>Win a Motherlode — earn <b style={{color:"#FFD700"}}>1000 $ZERO</b> on top of 10× USDC</>,gold:true},
+              {n:"01",text:<>Pick the winning cell — <b style={{color:"#e0e8f0"}}>100 $GROOD</b> split among all players on that cell</>},
+              {n:"02",text:<>Pick alone on winning cell — keep the entire <b style={{color:"#e0e8f0"}}>100 $GROOD</b> yourself</>},
+              {n:"🔥",text:<>Win a Motherlode — earn <b style={{color:"#FFD700"}}>1000 $GROOD</b> on top of 10× USDG</>,gold:true},
             ].map(({n,text,gold})=>(
               <div key={n} style={{display:"flex",alignItems:"flex-start",gap:10,fontSize:11,color:"#7a8b9e",lineHeight:1.6}}>
                 <span style={{fontFamily:"Orbitron,sans-serif",fontSize:9,color:gold?"#FFD700":"#1652F0",background:gold?"rgba(255,215,0,0.08)":"rgba(22,82,240,0.12)",padding:"2px 6px",borderRadius:3,flexShrink:0,marginTop:2}}>{n}</span>
@@ -295,9 +295,9 @@ export default function HomePage() {
           </div>
           <div style={{padding:20,border:"1px solid rgba(22,82,240,0.15)",borderRadius:8,background:"rgba(22,82,240,0.03)",display:"flex",flexDirection:"column",gap:12}}>
             <div style={{fontFamily:"Orbitron,sans-serif",fontSize:11,fontWeight:700,letterSpacing:1,color:"#e0e8f0"}}>TGE TERMS</div>
-            <div style={{fontSize:11,color:"#7a8b9e",lineHeight:1.8}}>The TGE is <b style={{color:"#e0e8f0"}}>intentionally deferred</b> until GridZero reaches meaningful player milestones. $ZERO earned now accumulates in your wallet.</div>
+            <div style={{fontSize:11,color:"#7a8b9e",lineHeight:1.8}}>The TGE is <b style={{color:"#e0e8f0"}}>intentionally deferred</b> until Grood reaches meaningful player milestones. $GROOD earned now accumulates in your wallet.</div>
             <div style={{background:"rgba(0,0,0,0.3)",border:"1px solid rgba(22,82,240,0.1)",borderRadius:6,padding:"10px 12px",fontSize:11,color:"#4a5a6e",lineHeight:1.8}}>
-              <b style={{color:"#00cc88"}}>$ZERO is a gameplay reward</b> — not a speculative asset. Utility will be defined before TGE.
+              <b style={{color:"#00cc88"}}>$GROOD is a gameplay reward</b> — not a speculative asset. Utility will be defined before TGE.
             </div>
           </div>
         </div>
@@ -310,11 +310,11 @@ export default function HomePage() {
         <div style={{border:"1px solid rgba(22,82,240,0.15)",borderRadius:10,background:"rgba(22,82,240,0.03)",padding:"32px 28px",display:"flex",flexDirection:"column",gap:32}}>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{fontSize:10,letterSpacing:3,color:"#3B7BF6",fontWeight:700}}>PROVABLY FAIR</div>
-            <div style={{fontFamily:"Orbitron,sans-serif",fontSize:20,fontWeight:700,color:"#e0e8f0",letterSpacing:1,lineHeight:1.3}}>Zero Knowledge Every Round</div>
-            <div style={{fontSize:11,color:"#7a8b9e",lineHeight:1.8}}>Every winner selection is proven with a Groth16 ZK proof. Verified via Kurier in milliseconds and settled permanently on zkVerify.</div>
+            <div style={{fontFamily:"Orbitron,sans-serif",fontSize:20,fontWeight:700,color:"#e0e8f0",letterSpacing:1,lineHeight:1.3}}>Distributed Randomness Every Round</div>
+            <div style={{fontSize:11,color:"#7a8b9e",lineHeight:1.8}}>Every winner is drawn from a drand beacon — randomness produced by the League of Entropy&apos;s distributed network. The beacon for each round doesn&apos;t exist until after betting closes, and the game contract verifies its BLS signature itself. Nobody — not even the resolver — can bias the outcome.</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {["GROTH16","SNARKJS","BN128 CURVE"].map(p=><span key={p} style={{fontSize:9,padding:"3px 8px",borderRadius:3,fontWeight:700,letterSpacing:1,background:"rgba(22,82,240,0.12)",color:"#3B7BF6",border:"1px solid rgba(22,82,240,0.2)"}}>{p}</span>)}
-              {["KURIER VERIFIED","ZKVERIFY SETTLED"].map(p=><span key={p} style={{fontSize:9,padding:"3px 8px",borderRadius:3,fontWeight:700,letterSpacing:1,background:"rgba(0,204,136,0.1)",color:"#00cc88",border:"1px solid rgba(0,204,136,0.2)"}}>{p}</span>)}
+              {["DRAND EVMNET","BLS BN254","3S BEACONS"].map(p=><span key={p} style={{fontSize:9,padding:"3px 8px",borderRadius:3,fontWeight:700,letterSpacing:1,background:"rgba(22,82,240,0.12)",color:"#3B7BF6",border:"1px solid rgba(22,82,240,0.2)"}}>{p}</span>)}
+              {["VERIFIED ON-CHAIN","LEAGUE OF ENTROPY"].map(p=><span key={p} style={{fontSize:9,padding:"3px 8px",borderRadius:3,fontWeight:700,letterSpacing:1,background:"rgba(0,204,136,0.1)",color:"#00cc88",border:"1px solid rgba(0,204,136,0.2)"}}>{p}</span>)}
             </div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
@@ -347,9 +347,9 @@ export default function HomePage() {
             @gridzerogg
           </a>
           <a href="#" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3a4a5e",textDecoration:"none",letterSpacing:1}}>CONTRACT</a>
-          <a href="https://zkverify.subscan.io" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3a4a5e",textDecoration:"none",letterSpacing:1}}>ZKVERIFY</a>
+          <a href="https://drand.love" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#3a4a5e",textDecoration:"none",letterSpacing:1}}>DRAND</a>
         </div>
-        <div style={{fontSize:10,color:"#2a3a4e",letterSpacing:1}}>ON-CHAIN · BASE · VRF</div>
+        <div style={{fontSize:10,color:"#2a3a4e",letterSpacing:1}}>ON-CHAIN · ROBINHOOD · DRAND</div>
       </footer>
 
       <style>{`

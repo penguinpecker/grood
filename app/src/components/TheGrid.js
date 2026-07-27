@@ -2,16 +2,21 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { usePrivy, useWallets, useSendTransaction } from "@privy-io/react-auth";
 import { useResolverSSE } from "./useResolverSSE";
-import { createPublicClient, http, fallback, parseUnits, encodeFunctionData } from "viem";
-import { base } from "viem/chains";
+import { createPublicClient, http, fallback, parseUnits, encodeFunctionData, defineChain } from "viem";
 
 // ═══════════════════════════════════════════════════════════════
-// V4 CONTRACT ABI — GridZero: Round-Based Betting on Base (Auto-Pay)
-// GridZeroV4: 0x58497ADCc524ee9a0DA11900af32bFa973fE55d3
-// ZeroToken: 0x5E9335199d98402897fA5d3A5F21572280cdCDD0
-// USDC: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-// Chain: Base Mainnet (8453)
+// GROOD CONTRACT ABI — drand-powered 5x5 grid game (Auto-Pay)
+// Chain: Robinhood Chain Mainnet (4663)
+// Entry token: USDG (Paxos Global Dollar, 6 decimals)
+// Randomness: drand evmnet beacon, BLS-verified on-chain
 // ═══════════════════════════════════════════════════════════════
+const robinhood = defineChain({
+  id: 4663,
+  name: "Robinhood Chain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["https://rpc.mainnet.chain.robinhood.com"] } },
+  blockExplorers: { default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" } },
+});
 const GRID_ABI = [
   { name: "currentRoundId", type: "function", stateMutability: "view",
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
@@ -35,6 +40,7 @@ const GRID_ABI = [
       { name: "winningCell", type: "uint8" },
       { name: "resolved", type: "bool" },
       { name: "isBonusRound", type: "bool" },
+      { name: "drandRound", type: "uint64" },
     ] },
   { name: "playerCell", type: "function", stateMutability: "view",
     inputs: [{ name: "roundId", type: "uint256" }, { name: "player", type: "address" }],
@@ -45,7 +51,7 @@ const GRID_ABI = [
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { name: "roundDuration", type: "function", stateMutability: "view",
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "zeroPerRound", type: "function", stateMutability: "view",
+  { name: "groodPerRound", type: "function", stateMutability: "view",
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { name: "hasJoined", type: "function", stateMutability: "view",
     inputs: [{ name: "roundId", type: "uint256" }, { name: "player", type: "address" }],
@@ -77,18 +83,22 @@ const USDC_ABI = [
     inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] },
 ];
 
-const GRID_ADDR = "0x58497ADCc524ee9a0DA11900af32bFa973fE55d3";
-const TOKEN_ADDR = "0x5E9335199d98402897fA5d3A5F21572280cdCDD0";
-const USDC_ADDR = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const CELL_COST = "1";  // 1 USDC
-const CELL_COST_RAW = 1000000n; // 1 USDC in 6 decimals
+const GRID_ADDR = process.env.NEXT_PUBLIC_GROOD_ADDR || "0x0000000000000000000000000000000000000000";
+const TOKEN_ADDR = process.env.NEXT_PUBLIC_GROOD_TOKEN_ADDR || "0x0000000000000000000000000000000000000000";
+const USDC_ADDR = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"; // USDG (Paxos) on Robinhood Chain
+const CHAIN_ID = 4663;
+const GAS_SPONSOR = process.env.NEXT_PUBLIC_GAS_SPONSOR === "true";
+const CELL_COST = "1";  // 1 USDG
+const CELL_COST_RAW = 1000000n; // 1 USDG in 6 decimals
 const ROUND_DURATION = 60;
 const GRID_SIZE = 5;
 const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
-const SUPABASE_URL = "https://dqvwpbggjlcumcmlliuj.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxdndwYmdnamxjdW1jbWxsaXVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MzA2NjIsImV4cCI6MjA4NjIwNjY2Mn0.yrkg3mv62F-DiGA8-cajSSkwnhKBXRbVlr4ye6bdfTc";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON || "";
 const dbHeaders = { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` };
-const EXPLORER = "https://basescan.org";
+const EXPLORER = "https://robinhoodchain.blockscout.com";
+const DRAND_CHAIN_HASH = "04f1e9062b8a81f848fded9c12306733282b2727ecced50032187751166ec8c3";
+const SSE_URL = process.env.NEXT_PUBLIC_SSE_URL || "";
 
 const CELL_LABELS = [];
 for (let r = 0; r < GRID_SIZE; r++)
@@ -96,18 +106,18 @@ for (let r = 0; r < GRID_SIZE; r++)
     CELL_LABELS.push(`${String.fromCharCode(65 + r)}${c + 1}`);
 
 // Our own public client — WE control the RPC, not MetaMask
-const ALCHEMY_RPC = process.env.NEXT_PUBLIC_ALCHEMY_RPC || "https://base-mainnet.g.alchemy.com/v2/r6XQwbj3aRRGWp-oJkR7f";
+const ALCHEMY_RPC = process.env.NEXT_PUBLIC_ALCHEMY_RPC || "";
 
 const publicClient = createPublicClient({
-  chain: base,
+  chain: robinhood,
   batch: { multicall: true },
   transport: fallback([
-    http(ALCHEMY_RPC, {
+    ...(ALCHEMY_RPC ? [http(ALCHEMY_RPC, {
       timeout: 8_000,
       retryCount: 2,
       retryDelay: 500,
-    }),
-    http("https://mainnet.base.org", {
+    })] : []),
+    http("https://rpc.mainnet.chain.robinhood.com", {
       timeout: 8_000,
       retryCount: 1,
       retryDelay: 1_000,
@@ -202,14 +212,13 @@ export default function TheGrid() {
     });
   };
 
-  // ─── SSE: Real-time events from resolver ───
+  // ─── SSE: Real-time events from keeper ───
   const { connected: sseConnected } = useResolverSSE({
-    url: "https://extraordinary-integrity-production-0b2a.up.railway.app/events",
+    url: SSE_URL,
     onRoundResolved: () => {
       pollState();
-      // Fetch TX hash immediately, ZKV hash after ~25s finality window
+      // drand beacons are final at emission — one refresh picks up the TX hash
       setTimeout(refreshHistoryTop, 3000);
-      setTimeout(refreshHistoryTop, 25000);
     },
     onCellPicked: (data) => {
       setCellCounts(prev => {
@@ -429,12 +438,13 @@ export default function TheGrid() {
   const historyTotal = useRef(0);
 
   const fetchRoundHistory = async (offset, limit = HISTORY_PAGE_SIZE) => {
+    if (!SUPABASE_URL) return [];
     if (historyLoadingRef.current) return [];
     historyLoadingRef.current = true;
     setHistoryLoading(true);
     try {
       const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/gz_rounds?select=round_id,winning_cell,total_players,total_deposits,resolve_tx_hash,zkverify_tx_hash&total_players=gt.0&resolve_tx_hash=not.is.null&order=round_id.desc&limit=${limit}&offset=${offset}`,
+        `${SUPABASE_URL}/rest/v1/gz_rounds?select=round_id,winning_cell,total_players,total_deposits,resolve_tx_hash,drand_round&total_players=gt.0&resolve_tx_hash=not.is.null&order=round_id.desc&limit=${limit}&offset=${offset}`,
         { headers: { ...dbHeaders, Prefer: "count=exact" } }
       );
       const total = parseInt(r.headers.get("content-range")?.split("/")[1] || "0", 10);
@@ -447,7 +457,7 @@ export default function TheGrid() {
         pot: r.total_deposits,
         resolved: true,
         txHash: r.resolve_tx_hash,
-        zkverifyTxHash: r.zkverify_tx_hash || null,
+        drandRound: r.drand_round || null,
       }));
       historyOffset.current = offset + results.length;
       if (historyOffset.current >= historyTotal.current) {
@@ -493,7 +503,7 @@ export default function TheGrid() {
   const userHistoryTotal = useRef(0);
 
   const fetchUserHistory = async (offset, limit = 10) => {
-    if (!address) return [];
+    if (!address || !SUPABASE_URL) return [];
     try {
       const addr = address.toLowerCase();
       const r = await fetch(
@@ -526,7 +536,7 @@ export default function TheGrid() {
         pot: h.gz_rounds?.total_deposits || "0",
         players: h.gz_rounds?.total_players || "—",
         numWinners: winnersMap[h.round_id] || 1,
-        cost: "1000000", // 1 USDC
+        cost: "1000000", // 1 USDG
       }));
     } catch (e) {
       console.error("User history fetch error:", e);
@@ -651,7 +661,7 @@ export default function TheGrid() {
     }
   }, [resolved, winningCell]);
 
-  // ─── One-Time USDC Approval ───
+  // ─── One-Time USDG Approval ───
   const approveUsdc = async () => {
     if (!wallet || approving) return;
     setApproving(true);
@@ -659,18 +669,18 @@ export default function TheGrid() {
     try {
       const isEmbedded = wallet?.walletClientType === "privy";
       const approvalAmt = isEmbedded ? "100" : "1000000";
-      addFeed(`Approving ${isEmbedded ? "100" : "1,000,000"} USDC...`);
+      addFeed(`Approving ${isEmbedded ? "100" : "1,000,000"} USDG...`);
       const approveData = encodeFunctionData({
         abi: USDC_ABI, functionName: "approve",
         args: [GRID_ADDR, parseUnits(approvalAmt, 6)],
       });
       const receipt = await sendTransaction(
-        { to: USDC_ADDR, data: approveData, chainId: 8453 },
-        { sponsor: true }
+        { to: USDC_ADDR, data: approveData, chainId: CHAIN_ID },
+        { sponsor: GAS_SPONSOR }
       );
       await publicClient.waitForTransactionReceipt({ hash: receipt.hash });
       setUsdcApproved(true);
-      addFeed(`USDC approved ✓ — double-tap any cell to play!`);
+      addFeed(`USDG approved ✓ — double-tap any cell to play!`);
     } catch (e) {
       const msg = e.shortMessage || e.message || "Approval failed";
       setError(msg);
@@ -695,8 +705,8 @@ export default function TheGrid() {
 
       // Send sponsored tx via Privy
       const receipt = await sendTransaction(
-        { to: GRID_ADDR, data, chainId: 8453 },
-        { sponsor: true }
+        { to: GRID_ADDR, data, chainId: CHAIN_ID },
+        { sponsor: GAS_SPONSOR }
       );
 
       addFeed(`◈ Claiming cell ${CELL_LABELS[cellIndex]}...`);
@@ -726,7 +736,7 @@ export default function TheGrid() {
     }
   };
 
-  // ─── Withdraw USDC ───
+  // ─── Withdraw USDG ───
   const withdrawETH = async () => {
     if (!wallet || !withdrawAddr || !withdrawAmt || withdrawing) return;
     setWithdrawError("");
@@ -743,7 +753,7 @@ export default function TheGrid() {
     }
     setWithdrawing(true);
     try {
-      // ERC20 transfer for USDC
+      // ERC20 transfer for USDG
       const transferData = encodeFunctionData({
         abi: [{ name: "transfer", type: "function", stateMutability: "nonpayable",
           inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }],
@@ -752,13 +762,13 @@ export default function TheGrid() {
         args: [withdrawAddr.trim(), parseUnits(withdrawAmt, 6)],
       });
       const receipt = await sendTransaction(
-        { to: USDC_ADDR, data: transferData, chainId: 8453 },
-        { sponsor: true }
+        { to: USDC_ADDR, data: transferData, chainId: CHAIN_ID },
+        { sponsor: GAS_SPONSOR }
       );
-      addFeed(`↗ Withdrawing ${withdrawAmt} USDC...`);
+      addFeed(`↗ Withdrawing ${withdrawAmt} USDG...`);
       await publicClient.waitForTransactionReceipt({ hash: receipt.hash });
-      addFeed(`✓ Withdrawn ${withdrawAmt} USDC`);
-      setWithdrawSuccess(`✓ Sent ${withdrawAmt} USDC · ${receipt.hash.slice(0,10)}...${receipt.hash.slice(-6)}`);
+      addFeed(`✓ Withdrawn ${withdrawAmt} USDG`);
+      setWithdrawSuccess(`✓ Sent ${withdrawAmt} USDG · ${receipt.hash.slice(0,10)}...${receipt.hash.slice(-6)}`);
       setWithdrawAddr("");
       setWithdrawAmt("");
       pollState();
@@ -831,8 +841,8 @@ export default function TheGrid() {
         {/* Left — logo, clickable */}
         <div style={{...S.hLeft, cursor:"pointer", flexShrink:0}} onClick={()=>window.location.href="/"}>
           <LogoIcon size={22} />
-          <span style={S.logo} className="grid-logo-text">GRID</span>
-          <span style={S.logoSub} className="grid-logo-text">ZERO</span>
+          <span style={S.logo} className="grid-logo-text">GR</span>
+          <span style={S.logoSub} className="grid-logo-text">OOD</span>
           <div style={{width:5,height:5,borderRadius:"50%",background:"#3B7BF6",boxShadow:"0 0 6px #3B7BF6",animation:"pulse 2s ease-in-out infinite",marginLeft:3,flexShrink:0}}/>
         </div>
         {/* Center — nav, hidden on mobile */}
@@ -845,10 +855,10 @@ export default function TheGrid() {
           {authenticated && (
             <>
               <span style={S.hStat} className="grid-header-stat">
-                ● {fmtEth(gridBalance, 2)} <b style={{ color: "#1652F0" }}>ZERO</b>
+                ● {fmtEth(gridBalance, 2)} <b style={{ color: "#1652F0" }}>GROOD</b>
               </span>
               <span style={S.hStat} className="grid-header-stat">
-                ◆ {fmt(ethBalance, 2)} <b style={{ color: "#3B7BF6" }}>USDC</b>
+                ◆ {fmt(ethBalance, 2)} <b style={{ color: "#3B7BF6" }}>USDG</b>
               </span>
             </>
           )}
@@ -858,9 +868,9 @@ export default function TheGrid() {
               display: "none", alignItems: "center", gap: 8,
               fontSize: 11, letterSpacing: 0.5,
             }}>
-              <span style={{ color: "#3B7BF6" }}>{fmt(ethBalance, 2)} <b>USDC</b></span>
+              <span style={{ color: "#3B7BF6" }}>{fmt(ethBalance, 2)} <b>USDG</b></span>
               <span style={{ color: "#4a5a6e" }}>|</span>
-              <span style={{ color: "#1652F0" }}>{fmtEth(gridBalance, 2)} <b>ZERO</b></span>
+              <span style={{ color: "#1652F0" }}>{fmtEth(gridBalance, 2)} <b>GROOD</b></span>
             </span>
           )}
           {!authenticated ? (
@@ -879,7 +889,7 @@ export default function TheGrid() {
                 <span className="wallet-addr-mobile" style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "nowrap" }}>
                   <span style={{ fontSize: 10, color: "#3B7BF6", fontWeight: 700 }}>{fmt(ethBalance, 2)}<span style={{ fontSize: 9, opacity: 0.7 }}> U</span></span>
                   <span style={{ color: "#2a3a4e", fontSize: 9 }}>|</span>
-                  <span style={{ fontSize: 10, color: "#1652F0", fontWeight: 700 }}>{fmtEth(gridBalance, 0)}<span style={{ fontSize: 9, opacity: 0.7 }}> Z</span></span>
+                  <span style={{ fontSize: 10, color: "#1652F0", fontWeight: 700 }}>{fmtEth(gridBalance, 0)}<span style={{ fontSize: 9, opacity: 0.7 }}> G</span></span>
                   <span style={{ color: "#2a3a4e", fontSize: 9 }}>·</span>
                   <span style={{ fontSize: 9 }}>{address ? `${address.slice(0, 4)}…${address.slice(-3)}` : "W"}</span>
                 </span>
@@ -933,7 +943,7 @@ export default function TheGrid() {
                               <span style={{ color: "#6a7b8e", fontSize: 10 }}>R#{h.roundId}</span>
                               <span style={{ color: "#4a5a6e", fontSize: 10 }}>{CELL_LABELS[h.cell] || "?"}</span>
                               <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 10, fontWeight: 600, color: isWin ? "#00cc88" : "#ff3355", textAlign: "right" }}>
-                                {isWin ? "+" : "-"}{displayAmt.toFixed(2)} USDC
+                                {isWin ? "+" : "-"}{displayAmt.toFixed(2)} USDG
                               </span>
                             </div>
                           );
@@ -977,7 +987,7 @@ export default function TheGrid() {
                     padding: "12px 14px", borderBottom: "1px solid rgba(22,82,240,0.12)",
                     background: "rgba(22,82,240,0.04)",
                   }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#3B7BF6", letterSpacing: 1.5 }}>↗ WITHDRAW USDC</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#3B7BF6", letterSpacing: 1.5 }}>↗ WITHDRAW USDG</span>
                     <button onClick={() => { setWalletView("menu"); setWithdrawError(""); setWithdrawSuccess(""); }} style={{
                       fontSize: 10, color: "#6a7b8e", cursor: "pointer", background: "none",
                       border: "1px solid rgba(255,255,255,0.1)", padding: "4px 10px", borderRadius: 4,
@@ -987,7 +997,7 @@ export default function TheGrid() {
                   <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, padding: "0 2px" }}>
                       <span style={{ color: "#4a5a6e" }}>Available</span>
-                      <span style={{ color: "#3B7BF6", fontWeight: 600, cursor: "pointer" }} onClick={() => setWithdrawAmt(fmt(ethBalance, 6))}>{fmt(ethBalance)} USDC (MAX)</span>
+                      <span style={{ color: "#3B7BF6", fontWeight: 600, cursor: "pointer" }} onClick={() => setWithdrawAmt(fmt(ethBalance, 6))}>{fmt(ethBalance)} USDG (MAX)</span>
                     </div>
                     <input
                       placeholder="Destination address (0x...)"
@@ -996,7 +1006,7 @@ export default function TheGrid() {
                       style={{ ...S.dropdownInput, borderColor: withdrawError ? "rgba(255,51,85,0.4)" : "rgba(22,82,240,0.15)" }}
                     />
                     <input
-                      placeholder="Amount in USDC"
+                      placeholder="Amount in USDG"
                       value={withdrawAmt}
                       onChange={(e) => { setWithdrawAmt(e.target.value); setWithdrawError(""); setWithdrawSuccess(""); }}
                       style={S.dropdownInput}
@@ -1162,19 +1172,19 @@ export default function TheGrid() {
             ))}
           </div>
 
-          {/* Approve USDC — one-time, shows when connected but not approved */}
+          {/* Approve USDG — one-time, shows when connected but not approved */}
           {authenticated && allowanceChecked && !usdcApproved && !approving && (
             <button style={{ ...S.claimBtn, maxWidth: 620, marginTop: 12, background: "linear-gradient(135deg, #3B7BF6, #1652F0)" }} onClick={approveUsdc}>
-              🔓 APPROVE USDC TO PLAY
+              🔓 APPROVE USDG TO PLAY
             </button>
           )}
           {authenticated && usdcApproved && allowanceChecked && !approving && wallet?.walletClientType === "privy" && (
             <button style={{ ...S.claimBtn, maxWidth: 620, marginTop: 12, background: "none", border: "1px solid rgba(22,82,240,0.25)", color: "#4a5a6e", fontSize: 11 }} onClick={approveUsdc}>
-              ↻ TOP UP APPROVAL (100 USDC)
+              ↻ TOP UP APPROVAL (100 USDG)
             </button>
           )}
           {approving && (
-            <div style={{ ...S.claimingBar, maxWidth: 620, marginTop: 12 }}><div style={S.claimingDot} />APPROVING USDC...</div>
+            <div style={{ ...S.claimingBar, maxWidth: 620, marginTop: 12 }}><div style={S.claimingDot} />APPROVING USDG...</div>
           )}
 
           {/* Quick instruction */}
@@ -1192,7 +1202,7 @@ export default function TheGrid() {
           {/* Claim button — below grid */}
           {selectedCell !== null && !claiming && authenticated && usdcApproved && (
             <button style={{ ...S.claimBtn, maxWidth: 520, marginTop: 12 }} onClick={() => claimCell(selectedCell)}>
-              ⬡ LOCK CELL {CELL_LABELS[selectedCell]} — {CELL_COST} USDC
+              ⬡ LOCK CELL {CELL_LABELS[selectedCell]} — {CELL_COST} USDG
             </button>
           )}
           {claiming && (
@@ -1229,7 +1239,7 @@ export default function TheGrid() {
                 <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700 }}>CELL</span>
                 <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>POT</span>
                 <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>PLYR</span>
-                <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>ZERO</span>
+                <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>GROOD</span>
                 <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>P&L</span>
               </div>
               <div className="grid-user-history-scroll" style={{ maxHeight: 240, overflowY: "auto" }}>
@@ -1266,13 +1276,13 @@ export default function TheGrid() {
                         fontFamily: "'Orbitron', sans-serif", fontSize: 10, fontWeight: 600,
                         color: isWin ? "#1652F0" : "#2a3a4e", textAlign: "right",
                       }}>
-                        {isWin ? "+100 Z" : "—"}
+                        {isWin ? "+100 G" : "—"}
                       </span>
                       <span style={{
                         fontFamily: "'Orbitron', sans-serif", fontSize: 10, fontWeight: 600,
                         color: isWin ? "#00cc88" : "#ff3355", textAlign: "right", whiteSpace: "nowrap",
                       }}>
-                        {isWin ? "+" : "-"}{displayAmt.toFixed(2)} USDC
+                        {isWin ? "+" : "-"}{displayAmt.toFixed(2)} USDG
                       </span>
                     </div>
                   );
@@ -1349,7 +1359,7 @@ export default function TheGrid() {
                 <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700 }}>WINNER</span>
                 <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700 }}>POT</span>
                 <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>TRANSFER</span>
-                <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>VRF</span>
+                <span style={{ fontSize: 9, color: "#4a5a6e", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>DRAND</span>
               </div>
               {/* Rows */}
               <div>
@@ -1400,14 +1410,14 @@ export default function TheGrid() {
                         )}
                       </span>
                       <span style={{ textAlign: "right" }}>
-                        {r.zkverifyTxHash ? (
+                        {r.drandRound ? (
                           <a
-                            href={`https://zkverify.subscan.io/extrinsic/${r.zkverifyTxHash}`}
+                            href={`https://api.drand.sh/${DRAND_CHAIN_HASH}/public/${r.drandRound}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{ fontSize: 10, color: "#00cc88", textDecoration: "none", fontFamily: "'JetBrains Mono', monospace" }}
                           >
-                            {r.zkverifyTxHash.slice(0, 6)}…{r.zkverifyTxHash.slice(-4)} ↗
+                            #{r.drandRound} ↗
                           </a>
                         ) : (
                           <span style={{ fontSize: 10, color: "#2a3a4e" }}>—</span>
@@ -1477,7 +1487,7 @@ export default function TheGrid() {
           <b>⚠ DEBUG:</b> Round = 0 (not loading). Polls: {pollCount.current}.
           {pollError.current && <span> Error: {pollError.current}</span>}
           {!pollError.current && <span> No error caught — poll may not have run yet. Check console.</span>}
-          <br/>RPC: Alchemy (Base) | Contract: {GRID_ADDR.slice(0,10)}...
+          <br/>RPC: Robinhood Chain | Contract: {GRID_ADDR.slice(0,10)}...
         </div>
       )}
 
@@ -1487,7 +1497,7 @@ export default function TheGrid() {
           <LogoIcon size={16} />
           <span style={S.gridOnline}>GRID ONLINE</span>
         </span>
-        <span style={{ fontSize: 11, color: "#4a5a6e", letterSpacing: 1 }}>ON-CHAIN · BASE · VRF BY ZKVERIFY</span>
+        <span style={{ fontSize: 11, color: "#4a5a6e", letterSpacing: 1 }}>ON-CHAIN · ROBINHOOD · RANDOMNESS BY DRAND</span>
       </footer>
 
       {/* ─── CSS ─── */}
@@ -1644,7 +1654,7 @@ function LogoIcon({ size = 28 }) {
       <line x1="50" y1="4" x2="50" y2="76" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
       <line x1="4" y1="30" x2="76" y2="30" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
       <line x1="4" y1="50" x2="76" y2="50" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
-      <text x="40" y="56" textAnchor="middle" fontFamily="'Orbitron', sans-serif" fontWeight="900" fontSize="48" fill="white" letterSpacing="-2">0</text>
+      <text x="40" y="56" textAnchor="middle" fontFamily="'Orbitron', sans-serif" fontWeight="900" fontSize="48" fill="white" letterSpacing="-2">G</text>
     </svg>
   );
 }

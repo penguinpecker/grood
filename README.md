@@ -1,294 +1,94 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Chain-Base_L2-0052FF?style=for-the-badge&logo=coinbase&logoColor=white" />
-  <img src="https://img.shields.io/badge/Entry-1_USDC-2775CA?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/ZK-Groth16-1652F0?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Status-Live_on_Mainnet-00CC88?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Chain-Robinhood_Chain-00C805?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Entry-1_USDG-2775CA?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Randomness-drand_evmnet-8A2BE2?style=for-the-badge" />
 </p>
 
-<h1 align="center">◇ ◈ G R I D Z E R O ◈ ◇</h1>
+<h1 align="center">◇ ◈ G R O O D ◈ ◇</h1>
 
 <p align="center">
-  <code>ZERO KNOWLEDGE · FULL DEGEN</code>
+  <code>DISTRIBUTED RANDOMNESS · FULL DEGEN</code>
 </p>
 
 <p align="center">
-  A provably fair 5×5 grid game on <strong>Base</strong>.<br/>
-  Pick a cell. Hope the math gods pick the same one.<br/>
+  A provably fair 5×5 grid game on <strong>Robinhood Chain</strong>.<br/>
+  Pick a cell. Hope the beacon picks the same one.<br/>
   Winner takes the pot. Every <strong>30 seconds</strong>. Forever.
 </p>
 
-<p align="center">
-  <a href="https://gridzero-one.vercel.app"><strong>▶ Play Now</strong></a> &nbsp;·&nbsp;
-  <a href="https://gridzero-miniapp.vercel.app"><strong>◉ Farcaster</strong></a> &nbsp;·&nbsp;
-  <a href="https://gridzero-one.vercel.app/how-to-play"><strong>◇ How to Play</strong></a>
-</p>
-
 ---
 
-## WTF is GridZero?
+## WTF is Grood?
 
-GridZero is an onchain lottery that runs every **30 seconds** on **Base**.
+Grood is an onchain lottery that runs every **30 seconds** on **Robinhood Chain** (chain 4663).
 
-There's a 5×5 grid. You pick a cell. You pay **1 USDC**. When the round ends, a cryptographically random winning cell is revealed using a ZK-verified VRF (Verifiable Random Function). If you're standing on the winning cell — **you take the pot**.
+There's a 5×5 grid. You pick a cell. You pay **1 USDG**. When the round ends, the winning cell is chosen by a **drand randomness beacon** — produced by the League of Entropy's distributed network and **BLS-verified by the game contract itself** on-chain. If you're standing on the winning cell — **you take the pot**.
 
-No house-edge rigging. No backend coin flips. Just pure math, verified by **Groth16 zero-knowledge proofs**, settled on-chain for anyone to audit.
+The key trick: when a round starts, the contract pins the number of a **future** drand beacon — one that will only be emitted *after* betting closes. Nobody (not the resolver, not the deployer, not drand) can know or influence the outcome while entries are open, and the beacon's unique BLS signature is the only input the contract will accept.
 
-> **This isn't trust-me-bro gambling. This is trust-the-math gambling.**
+> **This isn't trust-me-bro gambling. This isn't even trust-the-prover gambling. The randomness verifies itself on-chain.**
 
----
-
-## 🕹️ How to Play
-
-```
-         ┌─────┬─────┬─────┬─────┬─────┐
-         │  0  │  1  │  2  │  3  │  4  │
-         ├─────┼─────┼─────┼─────┼─────┤
-         │  5  │  6  │ ×5  │  8  │  9  │
-         ├─────┼─────┼─────┼─────┼─────┤
-         │ 10  │ 11  │ YOU │ 13  │ 14  │
-         ├─────┼─────┼─────┼─────┼─────┤
-         │ 15  │ 16  │ 17  │  ✓  │ 19  │
-         ├─────┼─────┼─────┼─────┼─────┤
-         │ 20  │ 21  │ 22  │ 23  │ 24  │
-         └─────┴─────┴─────┴─────┴─────┘
-          ×5 = hot cell    YOU = your pick    ✓ = winner
-```
-
-### The Loop
+## 🕹️ How it works
 
 | Step | What Happens |
 |:----:|:-------------|
-| **01** | **◉ Round Opens** — A new 30-second round begins, anchored to Base block timestamps |
-| **02** | **◇ Pick Your Cell** — Choose any cell on the 5×5 grid. Costs **1 USDC**. Multiple players can pick the same cell |
-| **03** | **◈ Watch the Heatmap** — See where everyone's betting in real-time. Crowded cells split the pot. Empty cells = full payout |
-| **04** | **⬡ VRF Reveals Winner** — Resolver bot generates a Groth16 ZK proof → winning cell = `keccak256(vrfOutput) % 25` |
-| **05** | **◆ Collect Winnings** — Winners split the USDC pot + earn **$ZERO** tokens. Claim anytime |
+| **01** | **◉ Round Opens** — a new 30-second round begins; the contract pins the drand round emitted after `endTime` |
+| **02** | **◇ Pick Your Cell** — any cell on the 5×5 grid, **1 USDG**. One entry per address. Multiple players can share a cell |
+| **03** | **◈ Watch the Heatmap** — see where everyone's betting in real time. Crowded cells split the pot |
+| **04** | **⬡ Beacon Resolves** — drand emits the pinned beacon; **anyone** submits its signature to `resolveRound()`, the contract verifies the BLS signature (BN254 pairing) and derives the winner from **occupied cells only** |
+| **05** | **◆ Auto-Pay** — winners receive USDG + **$GROOD** in the same transaction. No claim step. The resolver earns 0.1 USDG |
 
-### The Strategy
+**Motherlode:** 1 in 100 rounds (derived from a second hash of the same beacon) pays **10× USDG** and **10× $GROOD**.
 
-| Move | Play Style | What Happens |
-|:-----|:-----------|:-------------|
-| 👥 **The Crowd** | Pick popular cells | More likely someone shares your cell — but lower payout if you win |
-| 🐺 **The Loner** | Pick empty cells | If it hits, you keep the **entire pot**. High risk, max reward |
-| 🧠 **The Analyst** | Read the heatmap | Find the edge between crowded and empty. Play the meta-game |
+**Payouts:** pool minus 5% protocol fee minus 0.1 USDG resolver reward, split among winners on the winning cell. A winner is guaranteed every round — the beacon draws from occupied cells only.
 
-> **No winner?** If nobody picked the winning cell, USDC stays in the contract. No $ZERO is minted. The pot effectively rolls forward, making future rounds juicier.
-
----
-
-## 💎 The Motherlode
-
-Once every ~100 rounds, something special happens.
-
-A **Motherlode** round triggers — determined by a secondary VRF derivation:
-
-```
-keccak256(vrfOutput, "bonus") % 100 == 0
-```
-
-You won't know it's a Motherlode until the round resolves. **Every round could be the one.**
-
-|  | Standard Round | 💎 Motherlode |
-|:--|:--------------|:-------------|
-| **USDC Payout** | Normal pot split | **10× USDC** (funded from treasury) |
-| **$ZERO Earned** | 10 ZERO | **100 ZERO** |
-| **Odds** | 99 in 100 | **1 in 100** |
-
----
-
-## 🪙 $ZERO Token
-
-| Property | Value |
-|:---------|:------|
-| **Symbol** | $ZERO |
-| **Standard** | ERC-20 on Base |
-| **Total Supply** | 1,000,000,000 (1B) |
-| **Emission** | ~10 ZERO per round to winners |
-| **Daily Rate** | ~28,800 ZERO (at 30s rounds) |
-| **Motherlode** | 10× emission on bonus rounds |
-| **Contract** | [`0xB684...E859`](https://basescan.org/address/0xB68409d54a5a28e9ca6c2B7A54F3DD78E6Eef859) |
-
-### Payout Flow
-
-```
-  ┌──────────────────┐
-  │   PLAYER POOL    │
-  │  N × 1 USDC      │
-  └────────┬─────────┘
-           │
-     ┌─────┼──────────────┐
-     ▼     ▼              ▼
-  ┌──────┐ ┌───────────┐ ┌────────────────┐
-  │ 10%  │ │ 0.1 USDC  │ │   THE REST     │
-  │ FEE  │ │ RESOLVER  │ │   = PRIZE POOL │
-  │  →   │ │  BOT      │ │   → split among│
-  │TREAS.│ │           │ │     winners    │
-  └──────┘ └───────────┘ └────────────────┘
-```
-
-**Example:** 20 players enter, 3 picked the winning cell:
-- Pool = **20 USDC**
-- Protocol fee (10%) = 2 USDC → treasury
-- Resolver reward = 0.1 USDC → bot
-- Prize pool = **17.9 USDC**
-- Each winner = **5.97 USDC** + **$ZERO tokens**
-
----
+**Backstop:** if a round somehow sits unresolved for 30 days (drand beacons are unchained and resolvable forever, so this means drand itself died), anyone can void the round and every player reclaims their entry.
 
 ## 🏗️ Architecture
 
 ```
-                         ┌──────────────────┐
-                         │     PLAYER       │
-                         │  Web App or      │
-                         │  Farcaster       │
-                         └────────┬─────────┘
-                                  │ picks cell (1 USDC)
-                                  ▼
-  ┌──────────────┐      ┌─────────────────┐      ┌──────────────┐
-  │              │      │                 │      │              │
-  │  KURIER API  │◀─────│  GRIDZERO V2    │─────▶│  $ZERO TOKEN │
-  │              │ VRF  │  (Base L2)      │ mint │  ERC-20      │
-  │  Groth16     │ proof│                 │ on   │              │
-  │  Sub-second  │─────▶│  USDC custody   │ win  └──────────────┘
-  │  verification│verify│  Round mgmt     │
-  │              │      │  Winner logic   │
-  └──────────────┘      └────────┬────────┘
-                                 ▲
-                                 │ resolveRound()
-                        ┌────────┴────────┐
-                        │  RESOLVER BOT   │
-                        │  Railway/Node   │
-                        │  WebSocket      │
-                        │  block listener │
-                        └─────────────────┘
-                                 │
-                        ┌────────▼────────┐
-                        │   ZKVERIFY      │
-                        │   Async proof   │
-                        │   settlement    │
-                        └─────────────────┘
+  PLAYER ── pickCell(1 USDG) ──▶ GROOD CONTRACT ── mint ──▶ $GROOD TOKEN
+                                   │  ▲
+                    verifies BLS   │  │ resolveRound(roundId, signature)
+                    sig on-chain   │  │      (permissionless)
+                                   ▼  │
+                              DRAND BEACON ◀── fetch public sig ── KEEPER BOT
+                              (evmnet, BN254)                      (optional!)
 ```
 
-### Tech Stack
+| Layer | Tech |
+|:------|:-----|
+| **Chain** | Robinhood Chain mainnet (4663, Arbitrum Nitro) · testnet 46630 |
+| **Entry currency** | USDG (Paxos Global Dollar), 6 decimals — `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
+| **Randomness** | drand **evmnet** (`bls-bn254-unchained-on-g1`, 3s period), verified on-chain via BN254 pairing precompile (~500k gas incl. verification) |
+| **Contracts** | `contracts/src/Grood.sol` + `DrandBeacon.sol` + vendored `BLS.sol`/`ModExp.sol` (kevincharm/bls-bn254, MIT) |
+| **Keeper** | `services/keeper/` — fetches beacons, resolves rounds, serves the SSE feed. Trustless and optional: anyone can resolve |
+| **Frontend** | Next.js + wagmi/viem + Privy, `app/` |
+| **Explorer** | [robinhoodchain.blockscout.com](https://robinhoodchain.blockscout.com) |
 
-| Layer | Tech | Details |
-|:------|:-----|:--------|
-| **Chain** | Base L2 | ~$0.001/tx, Coinbase ecosystem |
-| **Entry Currency** | USDC | 6 decimal precision, stable entry fee |
-| **ZK Proofs** | Groth16 via Kurier | Sub-second optimistic verification |
-| **Proof Settlement** | zkVerify | Substrate-based async audit trail |
-| **Frontend** | Next.js + wagmi + viem | Deployed on Vercel |
-| **Wallet** | Farcaster SDK / Privy | Embedded + external wallet support |
-| **Resolver** | Node.js | Railway, WebSocket block listener |
-| **RPC** | Alchemy | Dedicated endpoint for reliability |
-| **Backend** | Supabase | Round tracking + player analytics |
-
-### Round Lifecycle
-
-```
-Block N         →  Round #42 starts (startTime = block.timestamp)
-                   │
-Block N+1…N+14  →  Players pick cells (30-second window)
-                   │  Heatmap updates in real-time
-                   │
-Block N+15      →  block.timestamp ≥ endTime
-                   │
-                   ├─ Resolver detects round ended
-                   ├─ Fetches block hash as entropy source
-                   ├─ Kurier API generates Groth16 proof (<1 second)
-                   ├─ Calls resolveRound(vrfOutput, 42)
-                   ├─ Winning cell computed on-chain
-                   ├─ Round #43 auto-starts
-                   │
-                   └─ Winners call claim() → receive USDC + $ZERO
-```
-
-### Why ZK?
-
-Most onchain games use Chainlink VRF or commit-reveal schemes. GridZero uses **Groth16 zero-knowledge proofs** verified through the **Kurier API** because:
-
-- **◇ Instant resolution** — Kurier's optimistic verification means rounds resolve in <1s, not 30s+
-- **◇ Permanent audit trail** — zkVerify settles proofs asynchronously on a Substrate chain for verifiable history
-- **◇ Provably fair** — Anyone can verify the VRF output was correctly derived from the block hash
-- **◇ No oracle dependency** — Randomness from Base block hashes + VRF, not a third-party oracle that could be manipulated
-
----
-
-## 📄 Smart Contracts
-
-### GridZeroV2.sol — [`0xAd38...a26`](https://basescan.org/address/0xAd38008DF25909366d23f4b12dEADBD8cC586a26)
-
-| Function | Description |
-|:---------|:------------|
-| `pickCell(uint8 cell)` | Enter current round — pay 1 USDC, pick cell 0–24 |
-| `claim(uint256 roundId)` | Claim USDC + $ZERO winnings from a resolved round |
-| `resolveRound(bytes, uint256)` | Resolver-only: submit VRF output to determine winner |
-| `getCellCounts(roundId)` | View: player count per cell (for heatmap) |
-| `getCurrentRound()` | View: active round info + time remaining |
-| `getPotentialPayout(cell)` | View: estimated payout if this cell wins |
-
-### ZeroToken.sol — [`0xB684...E859`](https://basescan.org/address/0xB68409d54a5a28e9ca6c2B7A54F3DD78E6Eef859)
-
-Standard ERC-20 with minter role. GridZeroV2 is the authorized minter — it mints `$ZERO` to winners on `claim()`.
-
----
-
-## 🚀 Deployment
-
-### Contracts (Foundry)
-
-See `contracts/DEPLOY.s.sol` for deployment scripts.
-
-### Resolver Bot (Railway)
+## 🚀 Deploy
 
 ```bash
-cd services/
-railway init && railway link
-
-railway variables set BASE_RPC_WS=wss://...
-railway variables set BASE_RPC_HTTP=https://...
-railway variables set GRIDZERO_V2_ADDRESS=0xAd38008DF25909366d23f4b12dEADBD8cC586a26
-railway variables set RESOLVER_PRIVATE_KEY=0x...
-railway variables set KURIER_API_URL=https://api.kurier.xyz/v1
-railway variables set KURIER_API_KEY=...
-
-railway up
+cd contracts
+npm install
+npx hardhat test                                  # includes REAL drand beacon signatures as fixtures
+npx hardhat run scripts/probe-robinhood-precompiles.ts   # proves chain 4663 verifies drand beacons
+PRIVATE_KEY=0x... npx hardhat run scripts/deploy-grood.ts --network robinhood-testnet
+PRIVATE_KEY=0x... npx hardhat run scripts/deploy-grood.ts --network robinhood
 ```
 
-Send some ETH to the resolver wallet for gas. The bot earns **0.1 USDC per resolution** — self-sustaining once running.
+Then set the deployed addresses in `app/.env.example` → `.env.local`, and run the keeper:
 
----
+```bash
+cd services/keeper
+PRIVATE_KEY=0x... GROOD_ADDRESS=0x... npm start
+```
 
-## ⚙️ Configuration
+## 📜 Lineage
 
-| Parameter | Default | What it does |
-|:----------|:--------|:-------------|
-| `entryFee` | 1 USDC | Cost to play a round |
-| `roundDuration` | 30 seconds | How long each round lasts |
-| `protocolFeeBps` | 1000 (10%) | Protocol's cut of the pot |
-| `resolverReward` | 0.1 USDC | Incentive for the resolver bot |
-| `zeroPerRound` | 10 ZERO | Standard emission per round |
-| `motherlodePerRound` | 100 ZERO | Bonus emission on Motherlode rounds |
-| `bonusRoundOdds` | 100 | 1-in-N chance of Motherlode |
-| `bonusMultiplier` | 10× | USDC multiplier for Motherlode |
-
----
-
-## 🔗 Links
-
-| | |
-|:--|:--|
-| 🎮 **Web App** | [gridzero-one.vercel.app](https://gridzero-one.vercel.app) |
-| 🟣 **Farcaster Mini App** | [gridzero-miniapp.vercel.app](https://gridzero-miniapp.vercel.app) |
-| 📄 **Game Contract** | [`0xAd38...a26`](https://basescan.org/address/0xAd38008DF25909366d23f4b12dEADBD8cC586a26) |
-| 🪙 **$ZERO Token** | [`0xB684...E859`](https://basescan.org/address/0xB68409d54a5a28e9ca6c2B7A54F3DD78E6Eef859) |
-| 🔐 **ZK Infra** | [Horizon Labs](https://horizenlabs.io) / [Kurier](https://kurier.xyz) / [zkVerify](https://zkverify.io) |
-| 🔵 **Chain** | [Base](https://base.org) (Coinbase L2) |
-
----
+Grood is a fork of [GridZero](https://github.com/penguinpecker/gridzero) (Base + Groth16/zkVerify). The zk-VRF stack was replaced with drand beacons verified directly on-chain — strictly stronger trust assumptions, dramatically less infrastructure. Legacy GridZero contracts (V1–V4), the circom/ezkl/risc0 zk stack, and the old services remain in-tree for reference and are not part of the build.
 
 <p align="center">
-  <strong>◇ ◈ ZERO KNOWLEDGE · FULL DEGEN ◈ ◇</strong><br/>
-  <sub>Built with Groth16 proofs, bad decisions, and USDC you probably shouldn't be gambling.</sub>
+  <strong>◇ ◈ DISTRIBUTED RANDOMNESS · FULL DEGEN ◈ ◇</strong><br/>
+  <sub>Built with BLS pairings, bad decisions, and USDG you probably shouldn't be gambling.</sub>
 </p>

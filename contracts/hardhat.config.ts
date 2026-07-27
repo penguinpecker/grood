@@ -3,9 +3,8 @@ import "@nomicfoundation/hardhat-toolbox";
 import "dotenv/config";
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
-const BASE_SEPOLIA_RPC = process.env.BASE_SEPOLIA_RPC || "https://sepolia.base.org";
-const BASE_MAINNET_RPC = process.env.BASE_MAINNET_RPC || "https://mainnet.base.org";
-const BASESCAN_API_KEY = process.env.BASESCAN_API_KEY || "";
+const ROBINHOOD_RPC = process.env.ROBINHOOD_RPC || "https://rpc.mainnet.chain.robinhood.com";
+const ROBINHOOD_TESTNET_RPC = process.env.ROBINHOOD_TESTNET_RPC || "https://rpc.testnet.chain.robinhood.com";
 
 const config: HardhatUserConfig = {
   paths: {
@@ -25,22 +24,38 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
-    "base-sepolia": {
-      url: BASE_SEPOLIA_RPC,
+    robinhood: {
+      url: ROBINHOOD_RPC,
       accounts: [PRIVATE_KEY],
-      chainId: 84532,
+      chainId: 4663,
     },
-    "base-mainnet": {
-      url: BASE_MAINNET_RPC,
+    "robinhood-testnet": {
+      url: ROBINHOOD_TESTNET_RPC,
       accounts: [PRIVATE_KEY],
-      chainId: 8453,
+      chainId: 46630,
     },
     hardhat: {
       chainId: 31337,
+      // Just after drand evmnet genesis (2024-09-28T10:57:55Z) so tests can
+      // warp forward onto real historical beacon rounds.
+      initialDate: "2024-09-28T12:00:00Z",
     },
   },
   etherscan: {
-    apiKey: BASESCAN_API_KEY,
+    // Blockscout instances accept any non-empty API key string
+    apiKey: {
+      robinhood: "blockscout",
+    },
+    customChains: [
+      {
+        network: "robinhood",
+        chainId: 4663,
+        urls: {
+          apiURL: "https://robinhoodchain.blockscout.com/api",
+          browserURL: "https://robinhoodchain.blockscout.com",
+        },
+      },
+    ],
   },
 };
 

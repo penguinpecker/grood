@@ -39,7 +39,7 @@ function HTPLogoIcon({ size = 28 }) {
       <line x1="50" y1="4" x2="50" y2="76" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
       <line x1="4" y1="30" x2="76" y2="30" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
       <line x1="4" y1="50" x2="76" y2="50" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
-      <text x="40" y="56" textAnchor="middle" fontFamily="'Orbitron', sans-serif" fontWeight="900" fontSize="48" fill="white" letterSpacing="-2">0</text>
+      <text x="40" y="56" textAnchor="middle" fontFamily="'Orbitron', sans-serif" fontWeight="900" fontSize="48" fill="white" letterSpacing="-2">G</text>
     </svg>
   );
 }
@@ -70,8 +70,8 @@ export default function HowToPlay() {
       <header style={S.header}>
         <div style={S.hLeft}>
           <HTPLogoIcon size={28} />
-          <span style={S.logo}>GRID</span>
-          <span style={S.logoSub}>ZERO</span>
+          <span style={S.logo}>GR</span>
+          <span style={S.logoSub}>OOD</span>
           <span style={S.badge}>HOW TO PLAY</span>
         </div>
         <div style={S.hRight}>
@@ -86,7 +86,7 @@ export default function HowToPlay() {
           <div style={S.heroTag}>PROTOCOL BRIEFING</div>
           <h1 style={S.heroTitle}>HOW TO PLAY</h1>
           <p style={S.heroDesc}>
-            Pick a cell. Lock 1 USDC. A provably fair VRF selects the winning cell.
+            Pick a cell. Lock 1 USDG. A drand randomness beacon selects the winning cell.
             If it's yours, you take the pot. 30-second rounds, fully on-chain.
           </p>
         </div>
@@ -95,25 +95,25 @@ export default function HowToPlay() {
         <div style={S.steps}>
           <Step num="01" title="CONNECT & FUND">
             Sign in with your email, social account, or connect an existing wallet.
-            You'll need <Hl>USDC on Base</Hl> to play. Each round costs <Hl>1 USDC</Hl> per cell pick.
+            You'll need <Hl>USDG on Robinhood Chain</Hl> to play. Each round costs <Hl>1 USDG</Hl> per cell pick.
           </Step>
 
           <Step num="02" title="PICK YOUR CELL">
-            The grid is a <Hl>5×5 board with 25 cells</Hl>. Each round lasts <Hl>60 seconds</Hl>.
+            The grid is a <Hl>5×5 board with 25 cells</Hl>. Each round lasts <Hl>30 seconds</Hl>.
             Click any cell to select it, then confirm to lock your pick on-chain.
             Multiple players can pick the same cell.
           </Step>
 
           <Step num="03" title="ROUND RESOLVES">
-            When the timer hits zero, a <Hl>Groth16 VRF proof</Hl> is generated to select
-            the winning cell. This is cryptographically verifiable randomness — no one can
-            predict or manipulate the outcome. The proof is verified via <Hl>zkVerify</Hl>.
+            When the timer hits zero, the <Hl>drand beacon</Hl> pinned at round start is emitted
+            by the League of Entropy network. Its BLS signature — which didn't exist while betting
+            was open — is <Hl>verified by the contract itself</Hl> and picks the winning cell.
           </Step>
 
           <Step num="04" title="WINNERS GET PAID">
             If you picked the winning cell, you <span style={{ color: "#00CC88", fontWeight: 600 }}>split the pot</span> with
             anyone else who picked the same cell. Fewer players on your cell = bigger payout.
-            All payouts are instant and on-chain. Winners also earn <Hl>$ZERO tokens</Hl>.
+            All payouts are instant and on-chain. Winners also earn <Hl>$GROOD tokens</Hl>.
           </Step>
 
           <Step num="05" title="NEXT ROUND STARTS">
@@ -170,21 +170,21 @@ export default function HowToPlay() {
         {/* Info Cards */}
         <div style={S.infoGrid}>
           <InfoCard icon="⬡" title="PROVABLY FAIR">
-            Every round uses a <Hl>Groth16 VRF proof</Hl> verified by <Hl>zkVerify</Hl>.
-            The winning cell is determined by cryptographic randomness that nobody can predict or tamper with.
+            Every round uses a <Hl>drand beacon</Hl> verified <Hl>on-chain</Hl> by the game contract.
+            The winning cell is determined by distributed randomness that nobody can predict or tamper with.
           </InfoCard>
           <InfoCard icon="◈" title="FULLY ON-CHAIN">
-            All bets, payouts, and round results are recorded on <Hl>Base</Hl>.
+            All bets, payouts, and round results are recorded on <Hl>Robinhood Chain</Hl>.
             No custodial risk. Your funds are in the smart contract until you win.
-            Verify everything on BaseScan.
+            Verify everything on Blockscout.
           </InfoCard>
-          <InfoCard icon="●" title="$ZERO REWARDS">
-            Winners earn <Hl>$ZERO tokens</Hl> on top of the USDC pot.
-            $ZERO is the native reward token — hold it, trade it, or accumulate for the Motherlode.
+          <InfoCard icon="●" title="$GROOD REWARDS">
+            Winners earn <Hl>$GROOD tokens</Hl> on top of the USDG pot.
+            $GROOD is the native reward token — hold it, trade it, or accumulate for the Motherlode.
           </InfoCard>
           <InfoCard icon="↗" title="INSTANT PAYOUTS">
-            Winners receive USDC directly to their wallet within seconds of each round resolving.
-            No claiming, no delays — just on-chain settlement on Base.
+            Winners receive USDG directly to their wallet within seconds of each round resolving.
+            No claiming, no delays — just on-chain settlement on Robinhood Chain.
           </InfoCard>
         </div>
 
@@ -196,22 +196,22 @@ export default function HowToPlay() {
               <div style={{ fontSize: 28, marginBottom: 10 }}>★</div>
               <div style={{ ...S.specialName, color: "#FFD700" }}>MOTHERLODE</div>
               <div style={{ fontSize: 11, color: "rgba(255,215,0,0.6)", marginBottom: 10 }}>
-                1 in 625 chance (~every 5 hours)
+                1 in 100 rounds (~every 50 minutes)
               </div>
               <div style={S.specialDesc}>
-                A portion of every round's $ZERO accumulates in the Motherlode pool.
-                When triggered, the winner takes the entire accumulated pool — potentially massive payouts.
+                Winners get 10× the normal USDG payout plus 10× the $GROOD emission.
+                You won't know it's a Motherlode until the round resolves — every round could be the one.
               </div>
             </div>
             <div style={S.specialBonus}>
               <div style={{ fontSize: 28, marginBottom: 10 }}>⚡</div>
-              <div style={{ ...S.specialName, color: "#00CC88" }}>BONUS ROUND</div>
+              <div style={{ ...S.specialName, color: "#00CC88" }}>UNRIGGABLE TRIGGER</div>
               <div style={{ fontSize: 11, color: "rgba(0,204,136,0.6)", marginBottom: 10 }}>
-                ~1 per 24 hours
+                derived from the drand beacon
               </div>
               <div style={S.specialDesc}>
-                Randomly triggered rounds with 10× the normal $ZERO rewards.
-                Same gameplay, same cost — just amplified rewards.
+                Motherlodes are triggered by a second hash of the same drand beacon that picks the winner —
+                visible to everyone, manipulable by no one.
               </div>
             </div>
           </div>
@@ -221,7 +221,7 @@ export default function HowToPlay() {
         <div style={S.ctaSection}>
           <a href="/" style={S.ctaBtn}>⬡ START PLAYING</a>
           <div style={S.ctaSub}>
-            ON-CHAIN · BASE · VRF BY ZKVERIFY
+            ON-CHAIN · ROBINHOOD · RANDOMNESS BY DRAND
           </div>
         </div>
       </div>
@@ -232,7 +232,7 @@ export default function HowToPlay() {
           <HTPLogoIcon size={16} />
           <span style={S.footerOnline}>GRID ONLINE</span>
         </span>
-        <span style={{ fontSize: 11, color: "#4a5a6e", letterSpacing: 1 }}>ON-CHAIN · BASE · VRF BY ZKVERIFY</span>
+        <span style={{ fontSize: 11, color: "#4a5a6e", letterSpacing: 1 }}>ON-CHAIN · ROBINHOOD · RANDOMNESS BY DRAND</span>
       </footer>
 
       <style>{`
