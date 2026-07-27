@@ -772,11 +772,10 @@ export default function TheGrid() {
   const timerColor = smoothTime > 10 ? "#3B7BF6" : smoothTime > 5 ? "#4D8EFF" : "#ff3355";
 
   const getStatus = () => {
-    if (!ready) return "INITIALIZING...";
+    if (round === 0) return "INITIALIZING...";
     if (resolved) return `ROUND ${round} RESOLVED`;
-    if (smoothTime <= 0 && round > 0) return `RESOLVING ROUND ${round}...`;
-    if (smoothTime <= 0) return "WAITING...";
-    if (!authenticated) return `ROUND ${round} — LOGIN TO PLAY`;
+    if (smoothTime <= 0) return `RESOLVING ROUND ${round}...`;
+    if (!ready || !authenticated) return `ROUND ${round} — LOGIN TO PLAY`;
     return `ROUND ${round} ACTIVE`;
   };
 
@@ -827,8 +826,7 @@ export default function TheGrid() {
         {/* Left — logo, clickable */}
         <div style={{...S.hLeft, cursor:"pointer", flexShrink:0}} onClick={()=>window.location.href="/"}>
           <LogoIcon size={22} />
-          <span style={S.logo} className="grid-logo-text">GR</span>
-          <span style={S.logoSub} className="grid-logo-text">OOD</span>
+          <span style={S.logo} className="grid-logo-text">GR<span style={{fontWeight:500,color:"#e0e8f0"}}>OOD</span></span>
           <div style={{width:5,height:5,borderRadius:"50%",background:"#3B7BF6",boxShadow:"0 0 6px #3B7BF6",animation:"pulse 2s ease-in-out infinite",marginLeft:3,flexShrink:0}}/>
         </div>
         {/* Center — nav, hidden on mobile */}
@@ -1481,7 +1479,7 @@ export default function TheGrid() {
       <footer style={S.footer}>
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <LogoIcon size={16} />
-          <span style={S.gridOnline}>GRID ONLINE</span>
+          <span style={S.gridOnline}>GROOD ONLINE</span>
         </span>
         <span style={{ fontSize: 11, color: "#4a5a6e", letterSpacing: 1 }}>ON-CHAIN · ROBINHOOD · RANDOMNESS BY DRAND</span>
       </footer>

@@ -89,8 +89,7 @@ export default function HomePage() {
       <header style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",padding:"0 24px",height:56,borderBottom:"1px solid rgba(22,82,240,0.12)",background:"rgba(6,10,20,0.97)",zIndex:100,position:"sticky",top:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>router.push("/")}>
           <LogoIcon size={26}/>
-          <span style={{fontFamily:"Orbitron,sans-serif",fontWeight:900,fontSize:16,color:"#3B7BF6",letterSpacing:2}}>GR</span>
-          <span style={{fontFamily:"Orbitron,sans-serif",fontWeight:500,fontSize:16,color:"#e0e8f0",letterSpacing:2}}>OOD</span>
+          <span style={{fontFamily:"Orbitron,sans-serif",fontWeight:900,fontSize:16,color:"#3B7BF6",letterSpacing:2}}>GR<span style={{fontWeight:500,color:"#e0e8f0"}}>OOD</span></span>
           <div style={{width:6,height:6,borderRadius:"50%",background:"#3B7BF6",boxShadow:"0 0 6px #3B7BF6",animation:"pulse 2s ease-in-out infinite",marginLeft:4}}/>
         </div>
         <nav style={{display:"flex",alignItems:"center",gap:4}}>
@@ -338,7 +337,7 @@ export default function HomePage() {
       <footer style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12,padding:"16px 24px",borderTop:"1px solid rgba(22,82,240,0.08)",background:"rgba(6,10,20,0.97)",zIndex:10,position:"relative"}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <LogoIcon size={16}/>
-          <span style={{fontFamily:"Orbitron,sans-serif",fontSize:10,fontWeight:700,color:"#3B7BF6",letterSpacing:1.5,animation:"scanGlow 3s ease-in-out infinite"}}>GRID ONLINE</span>
+          <span style={{fontFamily:"Orbitron,sans-serif",fontSize:10,fontWeight:700,color:"#3B7BF6",letterSpacing:1.5,animation:"scanGlow 3s ease-in-out infinite"}}>GROOD ONLINE</span>
         </div>
         <div style={{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
           <a href="https://x.com/gridzerogg" target="_blank" rel="noopener noreferrer"

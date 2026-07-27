@@ -20,8 +20,8 @@ import http from "node:http";
 import {
   createPublicClient,
   createWalletClient,
-  custom,
   defineChain,
+  encodeFunctionData,
   http as viemHttp,
   parseAbi,
 } from "viem";
@@ -48,7 +48,7 @@ const DRAND_GENESIS = 1727521075;
 const DRAND_PERIOD = 3;
 
 export const robinhoodChain = defineChain({
-  id: 4663,
+  id: Number(process.env.CHAIN_ID || 4663),
   name: "Robinhood Chain",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: { default: { http: [RPC_URL] } },
@@ -69,21 +69,14 @@ const ABI = parseAbi([
 
 const account = privateKeyToAccount(process.env.PRIVATE_KEY);
 const publicClient = createPublicClient({ chain: robinhoodChain, transport: viemHttp(RPC_URL) });
-
-// The sequencer endpoint is submission-only (rejects reads), so route ONLY
-// raw-tx broadcasts there; every other method goes to the regular RPC.
-const readTransport = viemHttp(RPC_URL)({ chain: robinhoodChain });
-const sendTransport = viemHttp(SEQUENCER_RPC)({ chain: robinhoodChain });
-const walletClient = createWalletClient({
-  account,
-  chain: robinhoodChain,
-  transport: custom({
-    async request(args) {
-      const t = args.method === "eth_sendRawTransaction" ? sendTransport : readTransport;
-      return t.request(args);
-    },
-  }),
-});
+const walletClient = createWalletClient({ account, chain: robinhoodChain, transport: viemHttp(RPC_URL) });
+// The sequencer endpoint is submission-only (rejects reads): when configured,
+// txs are prepared+signed against the regular RPC and only the raw broadcast
+// goes to the sequencer.
+const seqClient =
+  SEQUENCER_RPC !== RPC_URL
+    ? createWalletClient({ account, chain: robinhoodChain, transport: viemHttp(SEQUENCER_RPC) })
+    : null;
 
 // ─── SSE feed (same event shapes the frontend already consumes) ───
 const sseClients = new Set();
@@ -195,12 +188,22 @@ publicClient.watchContractEvent({
 });
 
 async function sendResolve(fn, roundId, args) {
-  const hash = await walletClient.writeContract({
-    address: GROOD_ADDRESS,
-    abi: ABI,
-    functionName: fn,
-    args,
-  });
+  let hash;
+  if (seqClient) {
+    const request = await walletClient.prepareTransactionRequest({
+      to: GROOD_ADDRESS,
+      data: encodeFunctionData({ abi: ABI, functionName: fn, args }),
+    });
+    const serializedTransaction = await walletClient.signTransaction(request);
+    hash = await seqClient.sendRawTransaction({ serializedTransaction });
+  } else {
+    hash = await walletClient.writeContract({
+      address: GROOD_ADDRESS,
+      abi: ABI,
+      functionName: fn,
+      args,
+    });
+  }
   const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
   if (receipt.status !== "success") throw new Error(`${fn} reverted: ${hash}`);
   return hash;
@@ -292,6 +295,8 @@ for (;;) {
     }
   } catch (e) {
     log("loop error:", e.shortMessage || e.message);
+    if (e.metaMessages?.length) log("  meta:", e.metaMessages.join(" | "));
+    if (e.details) log("  details:", e.details);
     await sleep(2000);
   }
 }

@@ -70,8 +70,7 @@ export default function HowToPlay() {
       <header style={S.header}>
         <div style={S.hLeft}>
           <HTPLogoIcon size={28} />
-          <span style={S.logo}>GR</span>
-          <span style={S.logoSub}>OOD</span>
+          <span style={S.logo}>GR<span style={{fontWeight:500,color:"#E0E8F4"}}>OOD</span></span>
           <span style={S.badge}>HOW TO PLAY</span>
         </div>
         <div style={S.hRight}>
@@ -230,7 +229,7 @@ export default function HowToPlay() {
       <footer style={S.footer}>
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <HTPLogoIcon size={16} />
-          <span style={S.footerOnline}>GRID ONLINE</span>
+          <span style={S.footerOnline}>GROOD ONLINE</span>
         </span>
         <span style={{ fontSize: 11, color: "#4a5a6e", letterSpacing: 1 }}>ON-CHAIN · ROBINHOOD · RANDOMNESS BY DRAND</span>
       </footer>
