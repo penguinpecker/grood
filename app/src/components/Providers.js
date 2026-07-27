@@ -7,7 +7,7 @@ export default function Providers({ children }) {
 
   if (!appId) {
     return (
-      <div style={{ color: "#ff3355", padding: 40, fontFamily: "monospace" }}>
+      <div style={{ color: "#FF5000", padding: 40, fontFamily: "monospace" }}>
         ERROR: NEXT_PUBLIC_PRIVY_APP_ID not set
       </div>
     );
@@ -19,7 +19,7 @@ export default function Providers({ children }) {
       config={{
         appearance: {
           theme: "dark",
-          accentColor: "#ff8800",
+          accentColor: "#00C805",
         },
         embeddedWallets: {
           createOnLogin: "all-users",

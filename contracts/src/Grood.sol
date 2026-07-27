@@ -44,6 +44,11 @@ contract Grood is Ownable, ReentrancyGuard {
     ///         while the beacon still provably doesn't exist during betting
     ///         (protects against sequencer clock lag up to beaconGap seconds).
     uint256 public beaconGap = 2;
+    /// @notice If the pinned beacon hasn't been submitted this long after its
+    ///         emission time, anyone can re-pin the round to a fresh future
+    ///         beacon — the game self-heals from a drand hiccup in minutes,
+    ///         with the 30-day void/refund path as the nuclear backstop.
+    uint256 public constant REPIN_TIMEOUT = 5 minutes;
 
     IERC20 public immutable usdg;
     DrandBeacon public immutable beacon;
@@ -66,6 +71,13 @@ contract Grood is Ownable, ReentrancyGuard {
     /// @notice USDG owed to players of voided rounds — reserved and never
     ///         spendable by payouts, bonus caps, or the resolver tip.
     uint256 public pendingRefunds;
+    /// @notice Self-funding Motherlode pot: a share of every protocol fee
+    ///         accrues here, and bonus rounds pay their extra multiplier
+    ///         exclusively from it — 10x is real once the reserve builds,
+    ///         and no other funds can ever be raided for it.
+    uint256 public bonusReserve;
+    /// @notice Share of the protocol fee diverted to the bonus reserve (bps)
+    uint256 public bonusReserveBps = 5000;
     /// @notice Set automatically when a round is voided (drand presumed
     ///         dead); owner resumes once the beacon is confirmed live again.
     bool public paused;
@@ -103,6 +115,8 @@ contract Grood is Ownable, ReentrancyGuard {
     event WinningsPaid(uint256 indexed roundId, address indexed player, uint256 usdcAmount, uint256 zeroAmount);
     event RewardMintFailed(uint256 indexed roundId, address indexed player, uint256 zeroAmount);
     event EmptyRoundSkipped(uint256 indexed roundId);
+    event RoundRepinned(uint256 indexed roundId, uint64 oldDrandRound, uint64 newDrandRound);
+    event BonusReserveDeposited(address indexed from, uint256 amount);
     event VoidRequested(uint256 indexed roundId, uint64 executableAt);
     event RoundVoided(uint256 indexed roundId);
     event Refunded(uint256 indexed roundId, address indexed player, uint256 amount);
@@ -198,7 +212,9 @@ contract Grood is Ownable, ReentrancyGuard {
         // ─── Calculate payouts ───
         uint256 pool = round.totalDeposits;
         uint256 fee = (pool * protocolFeeBps) / BPS_BASE;
-        accumulatedFees += fee;
+        uint256 toReserve = (fee * bonusReserveBps) / BPS_BASE;
+        accumulatedFees += fee - toReserve;
+        bonusReserve += toReserve;
 
         uint256 resolverCut = resolverReward;
         uint256 distributable;
@@ -209,13 +225,12 @@ contract Grood is Ownable, ReentrancyGuard {
         }
 
         if (isBonus) {
-            uint256 bonusAmount = distributable * bonusMultiplier;
-            // Fees, voided-round refund escrow, and the resolver tip are all
-            // reserved — the bonus can never spend money owed to others
-            uint256 reserved = accumulatedFees + pendingRefunds + resolverCut;
-            uint256 bal = usdg.balanceOf(address(this));
-            uint256 available = bal > reserved ? bal - reserved : 0;
-            distributable = bonusAmount > available ? available : bonusAmount;
+            // The bonus multiplier is paid EXCLUSIVELY from the self-funded
+            // reserve — solvent by construction, no other funds touchable
+            uint256 extra = distributable * (bonusMultiplier - 1);
+            if (extra > bonusReserve) extra = bonusReserve;
+            bonusReserve -= extra;
+            distributable += extra;
         }
 
         uint256 usdcPerWinner = winnersCount > 0 ? distributable / winnersCount : 0;
@@ -250,6 +265,34 @@ contract Grood is Ownable, ReentrancyGuard {
 
         emit RoundResolved(currentRoundId, winningCell, winnersCount, isBonus);
         _startNewRound();
+    }
+
+    /// @notice Re-pin a round whose beacon has been unobtainable for
+    ///         REPIN_TIMEOUT to a fresh future beacon. Permissionless and
+    ///         strictly forward-moving — a re-pin can never reach a beacon
+    ///         that existed while betting was open.
+    function repinRound(uint256 roundId) external {
+        require(roundId == currentRoundId, "Wrong round");
+
+        Round storage round = rounds[currentRoundId];
+        require(!round.resolved, "Already resolved");
+        require(round.totalPlayers > 0, "Use skipEmptyRound");
+        require(
+            block.timestamp > beacon.timeOfRound(round.drandRound) + REPIN_TIMEOUT,
+            "Beacon not overdue"
+        );
+
+        uint64 newDrandRound = beacon.roundAt(block.timestamp + beaconGap);
+        require(newDrandRound > round.drandRound, "Not forward");
+        emit RoundRepinned(roundId, round.drandRound, newDrandRound);
+        round.drandRound = newDrandRound;
+    }
+
+    /// @notice Seed the Motherlode reserve. Anyone can fatten the pot.
+    function depositBonusReserve(uint256 amount) external nonReentrant {
+        usdg.safeTransferFrom(msg.sender, address(this), amount);
+        bonusReserve += amount;
+        emit BonusReserveDeposited(msg.sender, amount);
     }
 
     /// @notice Skip an ended round with no players. Permissionless.
@@ -421,6 +464,7 @@ contract Grood is Ownable, ReentrancyGuard {
     function setMotherlodePerRound(uint256 _v) external onlyOwner { motherlodePerRound = _v; emit ConfigUpdated("motherlodePerRound", _v); }
     function setBonusRoundOdds(uint256 _v) external onlyOwner { require(_v >= 10, "Too frequent"); bonusRoundOdds = _v; emit ConfigUpdated("bonusRoundOdds", _v); }
     function setBonusMultiplier(uint256 _v) external onlyOwner { require(_v >= 1 && _v <= 100, "1-100x"); bonusMultiplier = _v; emit ConfigUpdated("bonusMultiplier", _v); }
+    function setBonusReserveBps(uint256 _v) external onlyOwner { require(_v <= BPS_BASE, ">100%"); bonusReserveBps = _v; emit ConfigUpdated("bonusReserveBps", _v); }
 
     function withdrawFees() external onlyOwner {
         uint256 amount = accumulatedFees;
@@ -428,7 +472,17 @@ contract Grood is Ownable, ReentrancyGuard {
         usdg.safeTransfer(feeRecipient, amount);
     }
 
-    function emergencyWithdrawUSDG() external onlyOwner {
-        usdg.safeTransfer(owner(), usdg.balanceOf(address(this)));
+    /// @notice Sweep only funds owed to nobody: balance minus the live
+    ///         round's escrow, refund escrow, bonus reserve, and unclaimed
+    ///         fees. The owner can recover strays/donations but can NEVER
+    ///         touch player money (replaces the V4 full-balance sweep).
+    function sweepSurplus() external onlyOwner {
+        uint256 reservedFunds = rounds[currentRoundId].totalDeposits
+            + pendingRefunds
+            + bonusReserve
+            + accumulatedFees;
+        uint256 bal = usdg.balanceOf(address(this));
+        require(bal > reservedFunds, "No surplus");
+        usdg.safeTransfer(owner(), bal - reservedFunds);
     }
 }

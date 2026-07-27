@@ -30,8 +30,8 @@ function HTPLogoIcon({ size = 28 }) {
     <svg width={size} height={size} viewBox="0 0 80 80" fill="none" style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}>
       <defs>
         <linearGradient id={`htplg${size}`} x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#3B7BF6" />
-          <stop offset="100%" stopColor="#1652F0" />
+          <stop offset="0%" stopColor="#00C805" />
+          <stop offset="100%" stopColor="#009B04" />
         </linearGradient>
       </defs>
       <rect x="4" y="4" width="72" height="72" rx="16" fill={`url(#htplg${size})`} />
@@ -59,9 +59,9 @@ export default function HowToPlay() {
         ...S.scanOverlay,
         background: `linear-gradient(180deg,
           transparent ${scanLine - 2}%,
-          rgba(22,82,240,0.12) ${scanLine - 1}%,
-          rgba(22,82,240,0.25) ${scanLine}%,
-          rgba(22,82,240,0.12) ${scanLine + 1}%,
+          rgba(0,155,4,0.12) ${scanLine - 1}%,
+          rgba(0,155,4,0.25) ${scanLine}%,
+          rgba(0,155,4,0.12) ${scanLine + 1}%,
           transparent ${scanLine + 2}%)`,
       }} />
       <div style={S.crtLines} />
@@ -70,7 +70,7 @@ export default function HowToPlay() {
       <header style={S.header}>
         <div style={S.hLeft}>
           <HTPLogoIcon size={28} />
-          <span style={S.logo}>GR<span style={{fontWeight:500,color:"#E0E8F4"}}>OOD</span></span>
+          <span style={S.logo}>GR<span style={{fontWeight:500,color:"#E0F4E8"}}>OOD</span></span>
           <span style={S.badge}>HOW TO PLAY</span>
         </div>
         <div style={S.hRight}>
@@ -110,7 +110,7 @@ export default function HowToPlay() {
           </Step>
 
           <Step num="04" title="WINNERS GET PAID">
-            If you picked the winning cell, you <span style={{ color: "#00CC88", fontWeight: 600 }}>split the pot</span> with
+            If you picked the winning cell, you <span style={{ color: "#00C805", fontWeight: 600 }}>split the pot</span> with
             anyone else who picked the same cell. Fewer players on your cell = bigger payout.
             All payouts are instant and on-chain. Winners also earn <Hl>$GROOD tokens</Hl>.
           </Step>
@@ -159,9 +159,9 @@ export default function HowToPlay() {
 
           {/* Legend */}
           <div style={S.legend}>
-            <LegendItem color="rgba(22,82,240,0.15)" border="rgba(22,82,240,0.2)" label="Empty" />
-            <LegendItem color="rgba(22,82,240,0.35)" border="rgba(22,82,240,0.5)" label="Claimed" />
-            <LegendItem color="rgba(22,82,240,0.5)" border="rgba(22,82,240,0.65)" label="Your Pick" glow />
+            <LegendItem color="rgba(0,155,4,0.15)" border="rgba(0,155,4,0.2)" label="Empty" />
+            <LegendItem color="rgba(0,155,4,0.35)" border="rgba(0,155,4,0.5)" label="Claimed" />
+            <LegendItem color="rgba(0,155,4,0.5)" border="rgba(0,155,4,0.65)" label="Your Pick" glow />
             <LegendItem color="rgba(255,215,0,0.3)" border="rgba(255,215,0,0.5)" label="Winner" />
           </div>
         </div>
@@ -204,8 +204,8 @@ export default function HowToPlay() {
             </div>
             <div style={S.specialBonus}>
               <div style={{ fontSize: 28, marginBottom: 10 }}>⚡</div>
-              <div style={{ ...S.specialName, color: "#00CC88" }}>UNRIGGABLE TRIGGER</div>
-              <div style={{ fontSize: 11, color: "rgba(0,204,136,0.6)", marginBottom: 10 }}>
+              <div style={{ ...S.specialName, color: "#00C805" }}>UNRIGGABLE TRIGGER</div>
+              <div style={{ fontSize: 11, color: "rgba(0,200,5,0.6)", marginBottom: 10 }}>
                 derived from the drand beacon
               </div>
               <div style={S.specialDesc}>
@@ -231,25 +231,25 @@ export default function HowToPlay() {
           <HTPLogoIcon size={16} />
           <span style={S.footerOnline}>GROOD ONLINE</span>
         </span>
-        <span style={{ fontSize: 11, color: "#4a5a6e", letterSpacing: 1 }}>ON-CHAIN · ROBINHOOD · RANDOMNESS BY DRAND</span>
+        <span style={{ fontSize: 11, color: "#4a6e5a", letterSpacing: 1 }}>ON-CHAIN · ROBINHOOD · RANDOMNESS BY DRAND</span>
       </footer>
 
       <style>{`
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { margin: 0; padding: 0; background: #060A14; overflow-x: hidden; }
+        body { margin: 0; padding: 0; background: #06140A; overflow-x: hidden; }
         @keyframes cellAppear { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
         @keyframes glowBlue {
-          0%, 100% { box-shadow: 0 0 8px rgba(22,82,240,0.25); }
-          50% { box-shadow: 0 0 20px rgba(22,82,240,0.55); }
+          0%, 100% { box-shadow: 0 0 8px rgba(0,155,4,0.25); }
+          50% { box-shadow: 0 0 20px rgba(0,155,4,0.55); }
         }
         @keyframes winnerGlow {
           0%, 100% { box-shadow: 0 0 10px rgba(255,215,0,0.25); }
           50% { box-shadow: 0 0 25px rgba(255,215,0,0.55); }
         }
         @keyframes scanGlow {
-          0% { text-shadow: 0 0 4px #3B7BF6; }
-          50% { text-shadow: 0 0 12px #3B7BF6, 0 0 24px #3B7BF644; }
-          100% { text-shadow: 0 0 4px #3B7BF6; }
+          0% { text-shadow: 0 0 4px #00C805; }
+          50% { text-shadow: 0 0 12px #00C805, 0 0 24px #00C80544; }
+          100% { text-shadow: 0 0 4px #00C805; }
         }
         @keyframes shimmer {
           0% { background-position: -200% 0; }
@@ -280,7 +280,7 @@ function Step({ num, title, children }) {
 }
 
 function Hl({ children }) {
-  return <span style={{ color: "#3B7BF6", fontWeight: 600 }}>{children}</span>;
+  return <span style={{ color: "#00C805", fontWeight: 600 }}>{children}</span>;
 }
 
 function InfoCard({ icon, title, children }) {
@@ -295,11 +295,11 @@ function InfoCard({ icon, title, children }) {
 
 function LegendItem({ color, border, label, glow }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#4A5A72" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#4A725A" }}>
       <div style={{
         width: 10, height: 10, borderRadius: 3,
         background: color, border: `1px solid ${border}`,
-        ...(glow ? { boxShadow: "0 0 6px rgba(22,82,240,0.4)" } : {}),
+        ...(glow ? { boxShadow: "0 0 6px rgba(0,155,4,0.4)" } : {}),
       }} />
       {label}
     </div>
@@ -312,8 +312,8 @@ function LegendItem({ color, border, label, glow }) {
 const S = {
   root: {
     fontFamily: "'JetBrains Mono', monospace",
-    background: "radial-gradient(ellipse at 30% 10%, #0D1A30 0%, #080E1C 40%, #060A14 100%)",
-    color: "#E0E8F4", minHeight: "100vh",
+    background: "radial-gradient(ellipse at 30% 10%, #0D301A 0%, #081C0E 40%, #06140A 100%)",
+    color: "#E0F4E8", minHeight: "100vh",
     display: "flex", flexDirection: "column", position: "relative",
   },
   scanOverlay: {
@@ -329,25 +329,25 @@ const S = {
   // Header
   header: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
-    padding: "12px 20px", borderBottom: "1px solid rgba(22,82,240,0.12)",
-    background: "rgba(8,12,22,0.95)", zIndex: 10, position: "relative",
+    padding: "12px 20px", borderBottom: "1px solid rgba(0,155,4,0.12)",
+    background: "rgba(8,22,12,0.95)", zIndex: 10, position: "relative",
   },
   hLeft: { display: "flex", alignItems: "center", gap: 10 },
   hRight: { display: "flex", alignItems: "center", gap: 16 },
-  dot: { width: 10, height: 10, borderRadius: 3, background: "#1652F0", boxShadow: "0 0 12px rgba(22,82,240,0.6)" },
-  logo: { fontFamily: "'Orbitron', sans-serif", fontWeight: 900, fontSize: 18, color: "#3B7BF6", letterSpacing: 3 },
-  logoSub: { fontFamily: "'Orbitron', sans-serif", fontWeight: 500, fontSize: 18, color: "#E0E8F4", letterSpacing: 2 },
+  dot: { width: 10, height: 10, borderRadius: 3, background: "#009B04", boxShadow: "0 0 12px rgba(0,155,4,0.6)" },
+  logo: { fontFamily: "'Orbitron', sans-serif", fontWeight: 900, fontSize: 18, color: "#00C805", letterSpacing: 3 },
+  logoSub: { fontFamily: "'Orbitron', sans-serif", fontWeight: 500, fontSize: 18, color: "#E0F4E8", letterSpacing: 2 },
   badge: {
     fontSize: 9, padding: "3px 8px", borderRadius: 4,
-    background: "rgba(22,82,240,0.12)", color: "#3B7BF6",
-    letterSpacing: 1.5, fontWeight: 700, border: "1px solid rgba(22,82,240,0.2)",
+    background: "rgba(0,155,4,0.12)", color: "#00C805",
+    letterSpacing: 1.5, fontWeight: 700, border: "1px solid rgba(0,155,4,0.2)",
   },
   backBtn: {
     fontFamily: "'Orbitron', sans-serif", fontSize: 11, fontWeight: 700,
     padding: "8px 18px", borderRadius: 8,
-    border: "1px solid #1652F0",
-    background: "linear-gradient(135deg, rgba(22,82,240,0.2), rgba(22,82,240,0.05))",
-    color: "#3B7BF6", cursor: "pointer", letterSpacing: 1.5, textDecoration: "none",
+    border: "1px solid #009B04",
+    background: "linear-gradient(135deg, rgba(0,155,4,0.2), rgba(0,155,4,0.05))",
+    color: "#00C805", cursor: "pointer", letterSpacing: 1.5, textDecoration: "none",
   },
 
   // Content
@@ -358,13 +358,13 @@ const S = {
 
   // Hero
   hero: { textAlign: "center", marginBottom: 48 },
-  heroTag: { fontSize: 10, letterSpacing: 3, color: "#3B7BF6", marginBottom: 14, fontWeight: 700 },
+  heroTag: { fontSize: 10, letterSpacing: 3, color: "#00C805", marginBottom: 14, fontWeight: 700 },
   heroTitle: {
     fontFamily: "'Orbitron', sans-serif", fontSize: 36, fontWeight: 900,
-    letterSpacing: 4, marginBottom: 16, color: "#E0E8F4",
+    letterSpacing: 4, marginBottom: 16, color: "#E0F4E8",
   },
   heroDesc: {
-    fontSize: 14, color: "#7A8DA6", lineHeight: 1.7,
+    fontSize: 14, color: "#7AA68D", lineHeight: 1.7,
     maxWidth: 560, margin: "0 auto",
   },
 
@@ -372,27 +372,27 @@ const S = {
   steps: { display: "flex", flexDirection: "column", gap: 24 },
   step: {
     display: "flex", gap: 20, alignItems: "flex-start",
-    padding: 22, border: "1px solid rgba(22,82,240,0.12)",
-    borderRadius: 12, background: "rgba(22,82,240,0.02)",
+    padding: 22, border: "1px solid rgba(0,155,4,0.12)",
+    borderRadius: 12, background: "rgba(0,155,4,0.02)",
   },
   stepNum: {
     flexShrink: 0, width: 44, height: 44,
     display: "flex", alignItems: "center", justifyContent: "center",
     fontFamily: "'Orbitron', sans-serif", fontSize: 18, fontWeight: 900,
-    color: "#3B7BF6", border: "2px solid rgba(22,82,240,0.3)",
-    borderRadius: 10, background: "linear-gradient(145deg, rgba(22,82,240,0.12), rgba(22,82,240,0.04))",
+    color: "#00C805", border: "2px solid rgba(0,155,4,0.3)",
+    borderRadius: 10, background: "linear-gradient(145deg, rgba(0,155,4,0.12), rgba(0,155,4,0.04))",
   },
   stepTitle: {
     fontFamily: "'Orbitron', sans-serif", fontSize: 14, fontWeight: 700,
-    color: "#E0E8F4", letterSpacing: 1.5, marginBottom: 8,
+    color: "#E0F4E8", letterSpacing: 1.5, marginBottom: 8,
   },
-  stepDesc: { fontSize: 13, color: "#7A8DA6", lineHeight: 1.7 },
+  stepDesc: { fontSize: 13, color: "#7AA68D", lineHeight: 1.7 },
 
   // Demo Grid
   demoSection: { marginTop: 48, textAlign: "center" },
   demoLabel: {
     fontFamily: "'Orbitron', sans-serif", fontSize: 12, fontWeight: 700,
-    letterSpacing: 2, color: "#7A8DA6", marginBottom: 16,
+    letterSpacing: 2, color: "#7AA68D", marginBottom: 16,
   },
   demoGridWrap: { display: "inline-block", position: "relative", padding: 12 },
   demoGrid: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4, width: 300 },
@@ -401,27 +401,27 @@ const S = {
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
     gap: 2, fontSize: 9, fontWeight: 600, animation: "cellAppear 0.4s ease both",
   },
-  cornerTL: { position: "absolute", top: 0, left: 0, width: 18, height: 18, borderLeft: "2px solid rgba(22,82,240,0.4)", borderTop: "2px solid rgba(22,82,240,0.4)" },
-  cornerTR: { position: "absolute", top: 0, right: 0, width: 18, height: 18, borderRight: "2px solid rgba(22,82,240,0.4)", borderTop: "2px solid rgba(22,82,240,0.4)" },
-  cornerBL: { position: "absolute", bottom: 0, left: 0, width: 18, height: 18, borderLeft: "2px solid rgba(22,82,240,0.4)", borderBottom: "2px solid rgba(22,82,240,0.4)" },
-  cornerBR: { position: "absolute", bottom: 0, right: 0, width: 18, height: 18, borderRight: "2px solid rgba(22,82,240,0.4)", borderBottom: "2px solid rgba(22,82,240,0.4)" },
+  cornerTL: { position: "absolute", top: 0, left: 0, width: 18, height: 18, borderLeft: "2px solid rgba(0,155,4,0.4)", borderTop: "2px solid rgba(0,155,4,0.4)" },
+  cornerTR: { position: "absolute", top: 0, right: 0, width: 18, height: 18, borderRight: "2px solid rgba(0,155,4,0.4)", borderTop: "2px solid rgba(0,155,4,0.4)" },
+  cornerBL: { position: "absolute", bottom: 0, left: 0, width: 18, height: 18, borderLeft: "2px solid rgba(0,155,4,0.4)", borderBottom: "2px solid rgba(0,155,4,0.4)" },
+  cornerBR: { position: "absolute", bottom: 0, right: 0, width: 18, height: 18, borderRight: "2px solid rgba(0,155,4,0.4)", borderBottom: "2px solid rgba(0,155,4,0.4)" },
 
   // Cell zones
   dcDark: {
-    background: "linear-gradient(145deg, #0E2260, #081340)",
-    border: "1px solid rgba(22,82,240,0.2)", color: "rgba(140,170,220,0.4)",
+    background: "linear-gradient(145deg, #0E6022, #084013)",
+    border: "1px solid rgba(0,155,4,0.2)", color: "rgba(140,220,170,0.4)",
   },
   dcLight: {
-    background: "linear-gradient(145deg, rgba(210,225,255,0.12), rgba(180,200,240,0.06))",
-    border: "1px solid rgba(200,220,255,0.18)", color: "rgba(200,218,250,0.6)",
+    background: "linear-gradient(145deg, rgba(210,255,225,0.12), rgba(180,240,200,0.06))",
+    border: "1px solid rgba(200,255,220,0.18)", color: "rgba(200,250,218,0.6)",
   },
   dcOpening: {
-    background: "linear-gradient(145deg, rgba(230,240,255,0.16), rgba(200,218,250,0.08))",
-    border: "1px solid rgba(220,235,255,0.22)", color: "rgba(215,232,255,0.65)",
+    background: "linear-gradient(145deg, rgba(230,255,240,0.16), rgba(200,250,218,0.08))",
+    border: "1px solid rgba(220,255,235,0.22)", color: "rgba(215,255,232,0.65)",
   },
-  dcPicked: { borderColor: "rgba(22,82,240,0.5)", color: "#3B7BF6" },
+  dcPicked: { borderColor: "rgba(0,155,4,0.5)", color: "#00C805" },
   dcYours: {
-    borderColor: "rgba(22,82,240,0.6)", color: "#4D8EFF",
+    borderColor: "rgba(0,155,4,0.6)", color: "#40D644",
     animation: "glowBlue 2s ease-in-out infinite",
   },
   dcWinner: {
@@ -436,20 +436,20 @@ const S = {
     display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 48,
   },
   infoCard: {
-    border: "1px solid rgba(22,82,240,0.12)", borderRadius: 10,
-    background: "rgba(22,82,240,0.02)", padding: 20,
+    border: "1px solid rgba(0,155,4,0.12)", borderRadius: 10,
+    background: "rgba(0,155,4,0.02)", padding: 20,
   },
   infoCardTitle: {
     fontFamily: "'Orbitron', sans-serif", fontSize: 11, fontWeight: 700,
-    letterSpacing: 1.5, color: "#E0E8F4", marginBottom: 8,
+    letterSpacing: 1.5, color: "#E0F4E8", marginBottom: 8,
   },
-  infoCardText: { fontSize: 12, color: "#7A8DA6", lineHeight: 1.6 },
+  infoCardText: { fontSize: 12, color: "#7AA68D", lineHeight: 1.6 },
 
   // Specials
   specialsSection: { marginTop: 48 },
   specialsTitle: {
     fontFamily: "'Orbitron', sans-serif", fontSize: 14, fontWeight: 700,
-    letterSpacing: 2, color: "#E0E8F4", marginBottom: 20, textAlign: "center",
+    letterSpacing: 2, color: "#E0F4E8", marginBottom: 20, textAlign: "center",
   },
   specialCards: { display: "flex", gap: 16 },
   specialMotherlode: {
@@ -459,35 +459,35 @@ const S = {
   },
   specialBonus: {
     flex: 1, borderRadius: 10, padding: 20, textAlign: "center",
-    border: "1px solid rgba(0,204,136,0.2)",
-    background: "linear-gradient(145deg, rgba(0,204,136,0.06), rgba(0,204,136,0.02))",
+    border: "1px solid rgba(0,200,5,0.2)",
+    background: "linear-gradient(145deg, rgba(0,200,5,0.06), rgba(0,200,5,0.02))",
   },
   specialName: { fontFamily: "'Orbitron', sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: 1.5, marginBottom: 6 },
-  specialDesc: { fontSize: 12, color: "#7A8DA6", lineHeight: 1.6 },
+  specialDesc: { fontSize: 12, color: "#7AA68D", lineHeight: 1.6 },
 
   // CTA
   ctaSection: { marginTop: 56, textAlign: "center" },
   ctaBtn: {
     fontFamily: "'Orbitron', sans-serif", fontSize: 14, fontWeight: 700,
     padding: "18px 48px", borderRadius: 10, border: "none", cursor: "pointer",
-    letterSpacing: 2, background: "linear-gradient(135deg, #1652F0, #3B7BF6)",
-    color: "#fff", boxShadow: "0 4px 24px rgba(22,82,240,0.35)",
+    letterSpacing: 2, background: "linear-gradient(135deg, #009B04, #00C805)",
+    color: "#fff", boxShadow: "0 4px 24px rgba(0,155,4,0.35)",
     textTransform: "uppercase", textDecoration: "none", display: "inline-block",
   },
-  ctaSub: { fontSize: 11, color: "#4A5A72", marginTop: 12, letterSpacing: 1.5 },
+  ctaSub: { fontSize: 11, color: "#4A725A", marginTop: 12, letterSpacing: 1.5 },
 
   // Footer
   footer: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
-    padding: "10px 20px", borderTop: "1px solid rgba(22,82,240,0.12)",
-    background: "rgba(8,12,22,0.95)", zIndex: 10, position: "relative",
+    padding: "10px 20px", borderTop: "1px solid rgba(0,155,4,0.12)",
+    background: "rgba(8,22,12,0.95)", zIndex: 10, position: "relative",
   },
   footerDot: {
     display: "inline-block", width: 6, height: 6, borderRadius: "50%",
-    background: "#1652F0", boxShadow: "0 0 8px rgba(22,82,240,0.6)",
+    background: "#009B04", boxShadow: "0 0 8px rgba(0,155,4,0.6)",
   },
   footerOnline: {
-    fontSize: 12, fontWeight: 700, color: "#3B7BF6", letterSpacing: 1.5,
+    fontSize: 12, fontWeight: 700, color: "#00C805", letterSpacing: 1.5,
     animation: "scanGlow 3s ease-in-out infinite",
   },
 };

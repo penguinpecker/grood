@@ -62,6 +62,7 @@ const ABI = parseAbi([
   "function rounds(uint256) view returns (uint64 startTime, uint64 endTime, uint256 totalDeposits, uint256 totalPlayers, uint8 winningCell, bool resolved, bool isBonusRound, uint64 drandRound)",
   "function resolveRound(uint256 roundId, uint256[2] signature)",
   "function skipEmptyRound(uint256 roundId)",
+  "function repinRound(uint256 roundId)",
   "function getCellPlayers(uint256 roundId, uint8 cell) view returns (address[])",
   "event CellPicked(uint256 indexed roundId, address indexed player, uint8 cell)",
   "event RoundResolved(uint256 indexed roundId, uint8 winningCell, uint256 winnersCount, bool isBonusRound)",
@@ -269,7 +270,19 @@ for (;;) {
     const now2 = Math.floor(Date.now() / 1000);
     if (now2 < beaconTime) await sleep(Math.max(0, (beaconTime - now2) * 1000 - 500));
     const sig = await fetchBeacon(Number(drandRound));
-    if (!sig) continue; // deadline hit — loop re-reads state and retries
+    if (!sig) {
+      // drand appears to have missed the pinned round; once the contract's
+      // 5-minute timeout passes, re-pin to a fresh future beacon
+      if (Math.floor(Date.now() / 1000) > beaconTime + 300) {
+        try {
+          const h = await sendResolve("repinRound", roundId, [roundId]);
+          log(`round ${roundId} re-pinned to a later beacon (${h})`);
+        } catch (e) {
+          log("repin failed:", e.shortMessage || e.message);
+        }
+      }
+      continue; // loop re-reads state (incl. any new drandRound) and retries
+    }
     const hash = await sendResolve("resolveRound", roundId, [roundId, sig], staged);
 
     const after = await publicClient.readContract({

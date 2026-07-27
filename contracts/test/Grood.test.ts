@@ -211,7 +211,13 @@ describe("Grood game", () => {
     const pool = 3n * ENTRY_FEE;
     const fee = (pool * 500n) / 10_000n;
     let distributable = pool - fee - RESOLVER_REWARD;
-    if (expectBonus) distributable = distributable * 10n; // capped by balance, not hit here
+    if (expectBonus) {
+      // bonus extra is paid only from the self-funded reserve (this round's
+      // own fee share is all that's in it)
+      const reserve = (fee * 5000n) / 10_000n;
+      const extra = distributable * 9n < reserve ? distributable * 9n : reserve;
+      distributable += extra;
+    }
     const winners = winningCell === 3 ? [alice, bob] : [carol];
     const perWinner = distributable / BigInt(winners.length);
     expect(await grood.roundUsdcPerWinner(id)).to.equal(perWinner);
@@ -345,11 +351,13 @@ describe("Grood game", () => {
 
     const resolved = await grood.rounds(idB);
     expect(resolved.isBonusRound).to.equal(true);
-    // Carol's 10x bonus is capped at her own round's distributable — the
-    // escrow (2 USDG) and fees stay untouched
+    // Carol's bonus extra comes ONLY from the bonus reserve (her round's own
+    // fee share) — the refund escrow (2 USDG) stays untouched
     const fee = (ENTRY_FEE * 500n) / 10_000n;
-    const distributable = ENTRY_FEE - fee - RESOLVER_REWARD;
-    expect(await grood.roundUsdcPerWinner(idB)).to.equal(distributable);
+    const toReserve = (fee * 5000n) / 10_000n;
+    const expectedPayout = ENTRY_FEE - fee - RESOLVER_REWARD + toReserve;
+    expect(await grood.roundUsdcPerWinner(idB)).to.equal(expectedPayout);
+    expect(await grood.bonusReserve()).to.equal(0n);
 
     // Every round-A player can still get their full refund
     const beforeA = await usdg.balanceOf(alice.address);
@@ -412,5 +420,49 @@ describe("Grood game", () => {
     await expect(grood.connect(alice).setEntryFee(2_000_000n)).to.be.reverted;
     await expect(grood.connect(alice).setProtocolFeeBps(100n)).to.be.reverted;
     await expect(grood.setProtocolFeeBps(2001n)).to.be.revertedWith("Fee>20%");
+    await expect(grood.setBeaconGap(0n)).to.be.revertedWith("1-60s");
+    await expect(grood.setBonusReserveBps(10_001n)).to.be.revertedWith(">100%");
+  });
+
+  it("re-pins an overdue round to a fresh future beacon and resolves it", async () => {
+    const { owner, alice, grood, beacon } = await loadFixture(deployAll);
+    // Open a round pinned 200 beacons (600s) before our real fixture round
+    const { id } = await openRoundPinnedTo(grood, ROUND_10M - 200n);
+    const round0 = await grood.rounds(id);
+    await time.setNextBlockTimestamp(BigInt(round0.endTime) - 5n);
+    await grood.connect(alice).pickCell(3);
+
+    // Too early to re-pin (beacon not yet REPIN_TIMEOUT overdue)
+    await time.setNextBlockTimestamp(BigInt(round0.endTime) + 60n);
+    await expect(grood.repinRound(id)).to.be.revertedWith("Beacon not overdue");
+
+    // Warp so that roundAt(now + gap) == ROUND_10M exactly, >5min overdue
+    const beaconTime10M = EVMNET_GENESIS + (ROUND_10M - 1n) * EVMNET_PERIOD;
+    await time.setNextBlockTimestamp(beaconTime10M - 4n);
+    await grood.connect(alice).repinRound(id);
+    const round1 = await grood.rounds(id);
+    expect(round1.drandRound).to.equal(ROUND_10M);
+    expect(round1.drandRound).to.be.greaterThan(round0.drandRound);
+
+    // The old beacon's signature is now useless; the new one resolves
+    await time.setNextBlockTimestamp(beaconTime10M + 1n);
+    await expect(grood.resolveRound(id, SIG_ROUND_1)).to.be.reverted;
+    await grood.connect(owner).resolveRound(id, SIG_ROUND_10M);
+    expect((await grood.rounds(id)).resolved).to.equal(true);
+  });
+
+  it("sweepSurplus can only take strays — never player money", async () => {
+    const { owner, alice, usdg, grood } = await loadFixture(deployAll);
+    const { targetEnd } = await openRoundPinnedTo10M(grood);
+    await time.setNextBlockTimestamp(targetEnd - 10n);
+    await grood.connect(alice).pickCell(0);
+    // Live escrow only — nothing sweepable
+    await expect(grood.connect(owner).sweepSurplus()).to.be.revertedWith("No surplus");
+    // A stray donation IS sweepable, but exactly the stray amount
+    await usdg.mint(await grood.getAddress(), 5_000_000n);
+    const before = await usdg.balanceOf(owner.address);
+    await grood.connect(owner).sweepSurplus();
+    expect(await usdg.balanceOf(owner.address)).to.equal(before + 5_000_000n);
+    expect(await usdg.balanceOf(await grood.getAddress())).to.equal(ENTRY_FEE);
   });
 });

@@ -17,7 +17,7 @@ export default function RootLayout({ children }) {
           rel="stylesheet"
         />
       </head>
-      <body style={{ margin: 0, padding: 0, background: "#0a0c0f" }}>
+      <body style={{ margin: 0, padding: 0, background: "#0a0f0c" }}>
         <Providers>{children}</Providers>
       </body>
     </html>
