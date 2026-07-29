@@ -106,6 +106,14 @@ const fmt = (v, d = 4) => {
   if (n < 0.0001) return n.toFixed(6);
   return n.toFixed(d);
 };
+// Spendable max: truncate (never round up) and keep gas back
+const GAS_RESERVE = 300000000000000n; // ~0.0003 ETH
+const maxWithdraw = (bal) => {
+  const b = BigInt(bal || 0);
+  const spend = b > GAS_RESERVE ? b - GAS_RESERVE : 0n;
+  const s = spend.toString().padStart(19, "0");
+  return `${s.slice(0, -18)}.${s.slice(-18).slice(0, 6)}`;
+};
 const fmtEth = (v, d = 2) => {
   if (!v) return (0).toFixed(d);
   return (Number(v) / 1e18).toFixed(d);
@@ -795,7 +803,8 @@ export default function TheGrid() {
     if (pool === 0n) return 0n;
     const fee = (pool * feeBps) / 10000n;
     const afterFee = pool - fee;
-    const tip = afterFee < resolverTipWei ? afterFee : resolverTipWei;
+    const tipCap = afterFee / 10n;                       // mirrors GroodV2
+    const tip = resolverTipWei < tipCap ? resolverTipWei : tipCap;
     const dist = afterFee - tip;
     const mine = (myStakes[idx] || 0n) + add;
     const cellT = (cellTotals[idx] || 0n) + add;
@@ -906,12 +915,9 @@ export default function TheGrid() {
                       <div style={{ fontSize: 9, letterSpacing: 2, color: "#00C805", fontWeight: 700, marginBottom: 8 }}>YOUR HISTORY</div>
                       <div style={{ maxHeight: 200, overflowY: "auto" }}>
                         {userHistory.map((h, i) => {
-                          const isWin = h.won;
-                          const potRaw = Number(h.pot || 0);
-                          const { feeBps: fb, resolverReward: rr } = feeConfig.current;
-                          const distributable = Math.max(potRaw - Math.floor(potRaw * fb / 10000) - rr, 0);
-                          const perWinner = distributable / (h.numWinners || 1);
-                          const displayAmt = isWin ? (perWinner / 1e6) : 1;
+                  const isWin = h.won;
+                          // all-BigInt (mixing BigInt with Number throws at render)
+                          const displayAmt = fmt(BigInt(h.amountWei || 0), 5);
                           return (
                             <div key={h.roundId} style={{
                               display: "grid", gridTemplateColumns: "36px 58px 26px 1fr",
@@ -925,7 +931,7 @@ export default function TheGrid() {
                               <span style={{ color: "#6a8e7b", fontSize: 10 }}>R#{h.roundId}</span>
                               <span style={{ color: "#4a6e5a", fontSize: 10 }}>{CELL_LABELS[h.cell] || "?"}</span>
                               <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 10, fontWeight: 600, color: isWin ? "#00C805" : "#FF5000", textAlign: "right" }}>
-                                {isWin ? "+" : "-"}{displayAmt.toFixed(5)} ETH
+                                {isWin ? "+" : "-"}{displayAmt} ETH
                               </span>
                             </div>
                           );
@@ -979,7 +985,7 @@ export default function TheGrid() {
                   <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, padding: "0 2px" }}>
                       <span style={{ color: "#4a6e5a" }}>Available</span>
-                      <span style={{ color: "#00C805", fontWeight: 600, cursor: "pointer" }} onClick={() => setWithdrawAmt(fmt(ethBalance, 6))}>{fmt(ethBalance, 6)} ETH (MAX)</span>
+                      <span style={{ color: "#00C805", fontWeight: 600, cursor: "pointer" }} onClick={() => setWithdrawAmt(maxWithdraw(ethBalance))}>{fmt(ethBalance, 6)} ETH (MAX)</span>
                     </div>
                     <input
                       placeholder="Destination address (0x...)"
@@ -1214,11 +1220,8 @@ export default function TheGrid() {
               <div className="grid-user-history-scroll" style={{ maxHeight: 240, overflowY: "auto" }}>
                 {userHistory.map((h, i) => {
                   const isWin = h.won;
-                  const potRaw = Number(h.pot || 0);
-                  const { feeBps, resolverReward } = feeConfig.current;
-                  const distributable = Math.max(potRaw - Math.floor(potRaw * feeBps / 10000) - resolverReward, 0);
-                  const perWinner = distributable / (h.numWinners || 1);
-                  const displayAmt = isWin ? (perWinner / 1e6) : 1;
+                  // all-BigInt (mixing BigInt with Number throws at render)
+                  const displayAmt = fmt(BigInt(h.amountWei || 0), 5);
                   return (
                     <div key={h.roundId} style={{
                       display: "grid", gridTemplateColumns: "38px 64px 30px 44px 28px 52px 1fr",
@@ -1251,7 +1254,7 @@ export default function TheGrid() {
                         fontFamily: "'Orbitron', sans-serif", fontSize: 10, fontWeight: 600,
                         color: isWin ? "#00C805" : "#FF5000", textAlign: "right", whiteSpace: "nowrap",
                       }}>
-                        {isWin ? "+" : "-"}{displayAmt.toFixed(5)} ETH
+                        {isWin ? "+" : "-"}{displayAmt} ETH
                       </span>
                     </div>
                   );

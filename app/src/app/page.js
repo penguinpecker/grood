@@ -113,7 +113,7 @@ export default function HomePage() {
             Pick a cell on the 5×5 grid. A drand randomness beacon — verified on-chain — selects the winner from occupied cells only. Winners share the pot — or keep everything if they picked alone.
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-            {["1 USDG per round","30s rounds","drand beacon every round","Auto-pay on resolve"].map(c=>(
+            {["Stake any amount of ETH","30s rounds","drand beacon every round","Auto-pay on resolve"].map(c=>(
               <div key={c} style={{fontSize:10,padding:"4px 10px",borderRadius:4,background:"rgba(0,155,4,0.07)",border:"1px solid rgba(0,155,4,0.15)",color:"#7a9e8b"}}>{c}</div>
             ))}
           </div>
@@ -140,7 +140,7 @@ export default function HomePage() {
             </div>
           </div>
           <div style={{display:"flex",gap:16,justifyContent:"center",flexWrap:"wrap"}}>
-            {[["ROUND","#1"],["POT","4.00 USDG","#00C805"],["PLAYERS","4"]].map(([l,v,vc])=>(
+            {[["ROUND","#1"],["POT","4.00 ETH","#00C805"],["PLAYERS","4"]].map(([l,v,vc])=>(
               <div key={l} style={{fontSize:10,color:"#4a6e5a"}}>{l} <b style={{fontFamily:"Orbitron,sans-serif",fontSize:11,color:vc||"#c8e5d6"}}>{v}</b></div>
             ))}
           </div>
@@ -176,7 +176,7 @@ export default function HomePage() {
                   <span style={{fontSize:9,color:"#4a6e5a",letterSpacing:2}}>OR</span>
                   <div style={{flex:1,height:1,background:"rgba(0,155,4,0.1)"}}/>
                 </div>
-                <button onClick={()=>router.push("/play")} style={{width:"100%",fontFamily:"JetBrains Mono,monospace",fontSize:10,padding:10,borderRadius:6,border:"1px solid rgba(0,155,4,0.18)",background:"rgba(0,155,4,0.04)",color:"#5a7e6a",cursor:"pointer",letterSpacing:1}}>PLAY WITH USDG →</button>
+                <button onClick={()=>router.push("/play")} style={{width:"100%",fontFamily:"JetBrains Mono,monospace",fontSize:10,padding:10,borderRadius:6,border:"1px solid rgba(0,155,4,0.18)",background:"rgba(0,155,4,0.04)",color:"#5a7e6a",cursor:"pointer",letterSpacing:1}}>PLAY WITH ETH →</button>
               </div>
             </>
           ) : (
@@ -206,9 +206,9 @@ export default function HomePage() {
         <div className="steps-grid">
           {[
             {n:"01",icon:"🔐",t:"LOGIN",d:"Sign in with email, Google, or wallet. Privy creates an embedded wallet instantly — no seed phrase needed."},
-            {n:"02",icon:"⬡",t:"PICK A CELL",d:"Choose any cell on the 5×5 grid. Costs 1 USDG. Multiple players can pick the same cell — they'll split if it wins."},
+            {n:"02",icon:"⬡",t:"PICK A CELL",d:"Stake any amount of ETH (min 0.0001) on any cells. Multiple players can stake the same cell — the prize splits pro-rata to stake."},
             {n:"03",icon:"🎲",t:"DRAND BEACON",d:"When the 30s round ends, the drand beacon pinned at round start is emitted. Its BLS signature is verified on-chain and picks the winner from occupied cells only."},
-            {n:"04",icon:"💰",t:"GET PAID",d:"Winners are paid automatically during resolution. No claim step. USDG goes straight to your wallet plus $GROOD rewards."},
+            {n:"04",icon:"💰",t:"GET PAID",d:"Winners are paid automatically during resolution. No claim step. ETH goes straight to your wallet plus $GROOD rewards."},
           ].map(({n,icon,t,d})=>(
             <div key={n} style={{padding:20,border:"1px solid rgba(0,155,4,0.15)",borderRadius:8,background:"rgba(0,155,4,0.03)",display:"flex",flexDirection:"column",gap:10}}>
               <span style={{fontFamily:"Orbitron,sans-serif",fontSize:10,fontWeight:700,color:"#009B04",background:"rgba(0,155,4,0.12)",borderRadius:4,padding:"2px 7px",display:"inline-block",letterSpacing:1,alignSelf:"flex-start"}}>{n}</span>
@@ -230,28 +230,28 @@ export default function HomePage() {
         </div>
         <div className="two-col-grid">
           <MechCard title="PAYOUT MATH">
-            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>Every player adds 1 USDG to the pot. A 5% protocol fee and 0.1 USDG resolver reward are deducted, then the rest goes to winners on the winning cell.</p>
+            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>Every stake goes into the pot. A 5% protocol fee and a small resolver tip are deducted, then the rest goes to stakers on the winning cell — split pro-rata to how much each staked.</p>
             <div style={{background:"rgba(0,0,0,0.3)",border:"1px solid rgba(0,155,4,0.1)",borderRadius:6,padding:"10px 12px",fontSize:11,color:"#4a6e5a",lineHeight:1.9}}>
-              pool = <b style={{color:"#00C805"}}>N</b> × 1 USDG<br/>
+              pool = <b style={{color:"#00C805"}}>sum of all stakes</b><br/>
               fee = pool × <b style={{color:"#00C805"}}>5%</b><br/>
-              distributable = pool − fee − <b style={{color:"#00C805"}}>0.1 USDG</b><br/>
-              each winner = distributable ÷ <b style={{color:"#00C805"}}>winners on cell</b>
+              prize = pool − fee − <b style={{color:"#00C805"}}>resolver tip</b><br/>
+              your cut = prize × <b style={{color:"#00C805"}}>your stake ÷ cell total</b>
             </div>
           </MechCard>
           <MechCard title="STRATEGY">
-            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>Cells with many players give you better win odds but smaller payouts. Lonely cells pay the entire pot if they win.</p>
+            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>A cell wins with probability equal to its share of the pot, and the prize splits by stake — so every wei has the same expected value. Bet big for a bigger share, or spread across cells.</p>
             <div style={{background:"rgba(0,0,0,0.3)",border:"1px solid rgba(0,155,4,0.1)",borderRadius:6,padding:"10px 12px",fontSize:11,color:"#4a6e5a",lineHeight:1.9}}>
-              <span style={{color:"#4a6e5a"}}>{`// 20 players, 3 on winning cell`}</span><br/>
-              pool = <b style={{color:"#00C805"}}>20 USDG</b><br/>
-              distributable ≈ <b style={{color:"#00C805"}}>18.9 USDG</b><br/>
-              each winner = <b style={{color:"#00C805"}}>+6.30 USDG</b>
+              <span style={{color:"#4a6e5a"}}>{`// pot 1 ETH; winning cell holds 0.4`}</span><br/>
+              prize ≈ <b style={{color:"#00C805"}}>0.95 ETH</b><br/>
+              you staked <b style={{color:"#00C805"}}>0.1</b> of that 0.4<br/>
+              you get = <b style={{color:"#00C805"}}>0.2375 ETH</b> (25% of cell)
             </div>
           </MechCard>
           <MechCard title="$GROOD REWARDS">
-            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>Every resolved round mints <b style={{color:"#e0f0e8"}}>$GROOD tokens</b> to winners on top of USDG. TGE is deferred until meaningful user milestones — it&apos;s a gameplay reward, not a speculative asset.</p>
+            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>Every resolved round mints <b style={{color:"#e0f0e8"}}>$GROOD tokens</b> to winners on top of ETH. TGE is deferred until meaningful user milestones — it&apos;s a gameplay reward, not a speculative asset.</p>
           </MechCard>
           <MechCard title="🔥 MOTHERLODE ROUNDS" gold>
-            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>1 in 100 rounds is a Motherlode. Winners get <b style={{color:"#FFD700"}}>10× the normal USDG payout</b> plus 10× $GROOD emission. Determined by a secondary hash of the drand beacon.</p>
+            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>1 in 100 rounds is a Motherlode. Winners get <b style={{color:"#FFD700"}}>10× the normal ETH payout</b> plus 10× $GROOD emission. Determined by a secondary hash of the drand beacon.</p>
           </MechCard>
         </div>
       </section>
@@ -284,7 +284,7 @@ export default function HomePage() {
             {[
               {n:"01",text:<>Pick the winning cell — <b style={{color:"#e0f0e8"}}>100 $GROOD</b> split among all players on that cell</>},
               {n:"02",text:<>Pick alone on winning cell — keep the entire <b style={{color:"#e0f0e8"}}>100 $GROOD</b> yourself</>},
-              {n:"🔥",text:<>Win a Motherlode — earn <b style={{color:"#FFD700"}}>1000 $GROOD</b> on top of 10× USDG</>,gold:true},
+              {n:"🔥",text:<>Win a Motherlode — earn <b style={{color:"#FFD700"}}>1000 $GROOD</b> on top of 10× ETH</>,gold:true},
             ].map(({n,text,gold})=>(
               <div key={n} style={{display:"flex",alignItems:"flex-start",gap:10,fontSize:11,color:"#7a9e8b",lineHeight:1.6}}>
                 <span style={{fontFamily:"Orbitron,sans-serif",fontSize:9,color:gold?"#FFD700":"#009B04",background:gold?"rgba(255,215,0,0.08)":"rgba(0,155,4,0.12)",padding:"2px 6px",borderRadius:3,flexShrink:0,marginTop:2}}>{n}</span>

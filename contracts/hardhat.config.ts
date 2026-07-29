@@ -3,7 +3,13 @@ import "@nomicfoundation/hardhat-toolbox";
 import "@openzeppelin/hardhat-upgrades";
 import "dotenv/config";
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
+// No fallback key: an unset/!malformed key yields NO signer, so a tx fails
+// loudly instead of being signed by a well-known throwaway.
+const KEY_RE = /^0x[0-9a-fA-F]{64}$/;
+const acct = (v?: string) => (v && KEY_RE.test(v) ? [v] : []);
+const TESTNET_KEY = process.env.PRIVATE_KEY;
+// Mainnet uses MAINNET_PRIVATE_KEY when set, else the same key as testnet
+const MAINNET_KEY = process.env.MAINNET_PRIVATE_KEY || process.env.PRIVATE_KEY;
 const ROBINHOOD_RPC = process.env.ROBINHOOD_RPC || "https://rpc.mainnet.chain.robinhood.com";
 const ROBINHOOD_TESTNET_RPC = process.env.ROBINHOOD_TESTNET_RPC || "https://rpc.testnet.chain.robinhood.com";
 
@@ -28,12 +34,12 @@ const config: HardhatUserConfig = {
   networks: {
     robinhood: {
       url: ROBINHOOD_RPC,
-      accounts: [PRIVATE_KEY],
+      accounts: acct(MAINNET_KEY),
       chainId: 4663,
     },
     "robinhood-testnet": {
       url: ROBINHOOD_TESTNET_RPC,
-      accounts: [PRIVATE_KEY],
+      accounts: acct(TESTNET_KEY),
       chainId: 46630,
     },
     hardhat: {

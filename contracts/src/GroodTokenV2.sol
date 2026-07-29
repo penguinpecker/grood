@@ -9,6 +9,9 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 /// @title $GROOD Token (UUPS-upgradeable)
 /// @notice ERC20 minted as rewards to Grood round winners, pro-rata by stake
 contract GroodTokenV2 is Initializable, ERC20Upgradeable, Ownable2StepUpgradeable, UUPSUpgradeable {
+    /// @notice Hard lifetime cap — emission is a schedule, not a faucet
+    uint256 public constant MAX_SUPPLY = 100_000_000e18;
+
     mapping(address => bool) public minters;
     uint256[49] private __gap;
 
@@ -35,6 +38,12 @@ contract GroodTokenV2 is Initializable, ERC20Upgradeable, Ownable2StepUpgradeabl
 
     function mint(address to, uint256 amount) external {
         require(minters[msg.sender], "Not a minter");
+        require(totalSupply() + amount <= MAX_SUPPLY, "Cap exceeded");
         _mint(to, amount);
+    }
+
+    /// @notice Permanently disabled — see GroodV2.renounceOwnership
+    function renounceOwnership() public pure override {
+        revert("Renounce disabled");
     }
 }

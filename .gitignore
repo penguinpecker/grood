@@ -7,3 +7,6 @@ typechain-types/
 .next/
 out/
 .env.save
+
+.env.*
+!.env.example

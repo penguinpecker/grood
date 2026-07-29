@@ -28,7 +28,7 @@ const SIG_BONUS: [bigint, bigint] = [
 ];
 const ROUND_BONUS = 10_000_013n;
 
-const BEACON_GAP = 2n;
+const BEACON_GAP = 10n;
 const MIN_STAKE = 10n ** 14n; // 0.0001 ETH
 const TIP = 3n * 10n ** 13n;  // 0.00003 ETH
 const FEE_BPS = 500n;
@@ -43,12 +43,24 @@ function mulDiv(a: bigint, b: bigint, d: bigint) {
   return (a * b) / d;
 }
 
+/** Replicates GroodV2's stake-weighted winner draw */
+function pickWinner(vrf: bigint, cellTotals: Map<number, bigint>, pool: bigint) {
+  const target = vrf % pool;
+  let acc = 0n;
+  for (let i = 0; i < 25; i++) {
+    acc += cellTotals.get(i) ?? 0n;
+    if (target < acc) return i;
+  }
+  throw new Error("no winner drawn");
+}
+
 /** Replicates the contract's money math for a non-bonus round */
 function economics(pool: bigint) {
   const fee = (pool * FEE_BPS) / 10_000n;
   const toReserve = (fee * RESERVE_BPS) / 10_000n;
   const afterFee = pool - fee;
-  const tip = afterFee < TIP ? afterFee : TIP;
+  const tipCap = afterFee / 10n;
+  const tip = TIP < tipCap ? TIP : tipCap;
   return { fee, toReserve, tip, distributable: afterFee - tip };
 }
 
@@ -128,10 +140,10 @@ describe("GroodV2 — variable-stake pari-mutuel", () => {
     expect(round.totalStakers).to.equal(3n);
     expect((await grood.getCellStakers(id, 3)).length).to.equal(2); // top-up added no record
 
-    // Predict outcome
+    // Predict outcome (stake-weighted draw)
     const vrf = vrfFromSig(SIG_ROUND_10M);
-    const occupied = [3, 7];
-    const winningCell = occupied[Number(vrf % 2n)];
+    const totals = new Map<number, bigint>([[3, 18n * 10n ** 16n], [7, 12n * 10n ** 16n]]);
+    const winningCell = pickWinner(vrf, totals, 3n * 10n ** 17n);
     const { fee, toReserve, distributable } = economics(3n * 10n ** 17n);
 
     const balBefore = {
@@ -167,6 +179,39 @@ describe("GroodV2 — variable-stake pari-mutuel", () => {
       expect(await ethers.provider.getBalance(carol.address)).to.equal(balBefore.carol + carolOut);
     }
     expect(await grood.accumulatedFees()).to.equal(fee - toReserve);
+  });
+
+  it("REGRESSION: dust-squatting empty cells cannot dilute a big staker's odds", async () => {
+    const { alice, bob, grood } = await loadFixture(deployAll);
+    const { id, targetEnd } = await openRound10M(grood);
+
+    // Whale concentrates 1 ETH on cell 0
+    await time.setNextBlockTimestamp(targetEnd - 25n);
+    await stakeOn(grood, alice, id, 0, 10n ** 18n);
+    // Squatter sprinkles the minimum across 20 other cells
+    const cells = Array.from({ length: 20 }, (_, i) => i + 1);
+    const amts = cells.map(() => MIN_STAKE);
+    await time.setNextBlockTimestamp(targetEnd - 20n);
+    await grood.connect(bob).stake(id, cells, amts, { value: MIN_STAKE * 20n });
+
+    const pool = 10n ** 18n + MIN_STAKE * 20n;
+    expect((await grood.rounds(id)).totalStaked).to.equal(pool);
+
+    // Under stake-weighting the whale's win probability is its stake share
+    // (~99.8%), NOT 1/21 as uniform-over-occupied would have given.
+    const vrf = vrfFromSig(SIG_ROUND_10M);
+    const totals = new Map<number, bigint>([[0, 10n ** 18n]]);
+    for (const c of cells) totals.set(c, MIN_STAKE);
+    const predicted = pickWinner(vrf, totals, pool);
+
+    await time.setNextBlockTimestamp(targetEnd + 1n);
+    await grood.connect(alice).resolveRound(id, SIG_ROUND_10M);
+    expect((await grood.rounds(id)).winningCell).to.equal(predicted);
+
+    // The squatter's expected value is its stake share of the pot — the
+    // exploit (near-free extraction from the whale) no longer exists.
+    const squatterShare = (MIN_STAKE * 20n * 10000n) / pool; // bps
+    expect(squatterShare).to.be.lessThan(25n); // <0.25% of the pot
   });
 
   it("accepts multi-cell stakes in one tx and rejects malformed input", async () => {
@@ -250,26 +295,32 @@ describe("GroodV2 — variable-stake pari-mutuel", () => {
     await expect(rr.withdrawVia(await grood.getAddress())).to.be.reverted;
   });
 
-  it("Motherlode pays extra only from the reserve and never raids refund escrow", async () => {
+  it("Motherlode pays the FULL multiple from the reserve, or is not declared", async () => {
     const { owner, alice, grood } = await loadFixture(deployAll);
-    // Seed the reserve so the bonus has something real to pay
-    await grood.connect(owner).depositBonusReserve({ value: 5n * 10n ** 16n });
+    const stake = 10n ** 17n; // 0.1 ETH
+    const { distributable, toReserve } = economics(stake);
+
+    // Seed enough that the full 9x extra is affordable
+    const needed = distributable * 9n;
+    await grood.connect(owner).depositBonusReserve({ value: needed });
+
     const { id, targetEnd } = await openRoundPinnedTo(grood, ROUND_BONUS);
     await time.setNextBlockTimestamp(targetEnd - 10n);
-    await stakeOn(grood, alice, id, 0, 10n ** 17n);
+    await stakeOn(grood, alice, id, 0, stake);
 
-    const reserveBefore = await grood.bonusReserve();
-    const { distributable, toReserve } = economics(10n ** 17n);
+    const balBefore = await ethers.provider.getBalance(alice.address);
     await time.setNextBlockTimestamp(targetEnd + 1n);
     await grood.connect(owner).resolveRound(id, SIG_BONUS);
 
     const round = await grood.rounds(id);
     expect(round.isBonusRound).to.equal(true);
-    const availableForBonus = reserveBefore + toReserve;
-    const wantedExtra = distributable * 9n;
-    const extra = wantedExtra > availableForBonus ? availableForBonus : wantedExtra;
-    expect(round.distributable).to.equal(distributable + extra);
-    // solvency invariant still holds
+    // full 10x of the base prize, no partial payout
+    expect(round.distributable).to.equal(distributable * 10n);
+    expect(await ethers.provider.getBalance(alice.address)).to.equal(balBefore + distributable * 10n);
+    // reserve consumed exactly, plus this round's own fee share credited
+    expect(await grood.bonusReserve()).to.equal(toReserve);
+
+    // solvency invariant
     const bal = await ethers.provider.getBalance(await grood.getAddress());
     const reserved =
       (await grood.rounds(await grood.currentRoundId())).totalStaked +
@@ -278,6 +329,25 @@ describe("GroodV2 — variable-stake pari-mutuel", () => {
       (await grood.bonusReserve()) +
       (await grood.accumulatedFees());
     expect(bal).to.be.greaterThanOrEqual(reserved);
+  });
+
+  it("does NOT declare a Motherlode the reserve cannot fully pay", async () => {
+    const { owner, alice, grood } = await loadFixture(deployAll);
+    const stake = 10n ** 17n;
+    const { distributable } = economics(stake);
+    // Seed far less than the 9x extra required
+    await grood.connect(owner).depositBonusReserve({ value: distributable });
+
+    const { id, targetEnd } = await openRoundPinnedTo(grood, ROUND_BONUS);
+    await time.setNextBlockTimestamp(targetEnd - 10n);
+    await stakeOn(grood, alice, id, 0, stake);
+    await time.setNextBlockTimestamp(targetEnd + 1n);
+    await grood.connect(owner).resolveRound(id, SIG_BONUS);
+
+    const round = await grood.rounds(id);
+    // beacon says bonus, but the reserve can't cover it -> normal round, no lie
+    expect(round.isBonusRound).to.equal(false);
+    expect(round.distributable).to.equal(distributable);
   });
 
   it("records one staker per address per cell — top-ups add no records", async () => {
@@ -348,7 +418,7 @@ describe("GroodV2 — variable-stake pari-mutuel", () => {
     await expect(grood.connect(alice).setMinStake(MIN_STAKE)).to.be.reverted;
     await expect(grood.setMinStake(10n ** 12n)).to.be.revertedWith("Out of bounds");
     await expect(grood.setResolverTip(10n ** 16n)).to.be.revertedWith("Tip>0.001");
-    await expect(grood.setBeaconGap(0n)).to.be.revertedWith("1-60s");
+    await expect(grood.setBeaconGap(2n)).to.be.revertedWith("8-60s");
     await expect(grood.setBeacon(ethers.ZeroAddress)).to.be.revertedWith("Zero address");
   });
 

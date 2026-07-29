@@ -15,8 +15,9 @@ interface IGroodToken {
 /// @notice Players stake any amount of ETH (>= minStakeWei per new position) on
 ///         any cells. A drand evmnet beacon — pinned at round start to a round
 ///         emitted only after betting closes, BLS-verified on-chain — picks the
-///         winning cell uniformly among occupied cells. Winners split the prize
-///         pro-rata to their stake on the winning cell. UUPS-upgradeable.
+///         winning cell weighted by stake. Winners split the prize pro-rata to
+///         their stake on that cell, so every wei has identical expected value
+///         wherever it sits. UUPS-upgradeable.
 contract GroodV2 is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
     /// @dev Namespaced-slot reentrancy guard (OZ 5.6 dropped the storage-based
     ///      upgradeable guard; transient storage isn't guaranteed on all chains)
@@ -45,7 +46,11 @@ contract GroodV2 is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
     uint256 public constant BPS_BASE = 10_000;
     uint256 public constant REFUND_DELAY = 30 days;
     uint256 public constant VOID_GRACE = 3 days;
-    uint256 public constant REPIN_TIMEOUT = 5 minutes;
+    /// @dev Owner-gated and on a drand-outage timescale on purpose: a
+    ///      permissionless or short-timeout re-pin would let a losing staker
+    ///      re-roll an already-published beacon. The permissionless liveness
+    ///      path is requestVoid/voidStuckRound, which refunds, never re-draws.
+    uint256 public constant REPIN_TIMEOUT = 6 hours;
     /// @notice Unique stakers per cell — bounds the auto-pay loop (top-ups free)
     uint256 public constant MAX_STAKERS_PER_CELL = 100;
     uint256 public constant MIN_STAKE_LO = 1e13;
@@ -143,7 +148,7 @@ contract GroodV2 is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
         feeRecipient = feeRecipient_;
         minStakeWei = 1e14;          // 0.0001 ETH
         roundDuration = 30;
-        beaconGap = 2;
+        beaconGap = 10;
         protocolFeeBps = 500;        // 5%
         resolverTipWei = 3e13;       // 0.00003 ETH
         groodPerRound = 100e18;
@@ -214,16 +219,21 @@ contract GroodV2 is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
         beacon.verifyBeaconRound(round.drandRound, signature);
         bytes32 vrf = keccak256(abi.encodePacked(signature[0], signature[1]));
 
-        // ─── Winner from occupied cells ───
-        uint8[25] memory occupied;
-        uint256 occupiedCount;
+        // ─── Winner cell drawn STAKE-WEIGHTED: P(cell) = cellTotal/pool.
+        //     Combined with the pro-rata split inside the cell, every wei
+        //     staked has identical expected value regardless of which cell
+        //     it sits on — so seeding dust across empty cells cannot dilute
+        //     anyone else's odds (uniform-over-occupied was exploitable).
+        uint256 target = uint256(vrf) % round.totalStaked;
+        uint8 winningCell;
+        uint256 acc;
         for (uint8 i = 0; i < 25; i++) {
-            if (cellTotal[roundId][i] > 0) {
-                occupied[occupiedCount] = i;
-                occupiedCount++;
+            acc += cellTotal[roundId][i];
+            if (target < acc) {
+                winningCell = i;
+                break;
             }
         }
-        uint8 winningCell = occupied[uint256(vrf) % occupiedCount];
         bool isBonus = (uint256(keccak256(abi.encodePacked(vrf, "bonus"))) % bonusRoundOdds) == 0;
 
         // ─── Money math ───
@@ -234,15 +244,23 @@ contract GroodV2 is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
         bonusReserve += toReserve;
 
         uint256 afterFee = pool - fee;
-        uint256 tipPaid = afterFee < resolverTipWei ? afterFee : resolverTipWei;
+        // Tip is capped proportionally so it can never eat the prize on
+        // small pots, whatever resolverTipWei is configured to
+        uint256 tipCap = afterFee / 10;
+        uint256 tipPaid = resolverTipWei < tipCap ? resolverTipWei : tipCap;
         uint256 distributable = afterFee - tipPaid;
 
         if (isBonus) {
-            // Bonus multiplier paid EXCLUSIVELY from the self-funded reserve
+            // Bonus multiplier paid EXCLUSIVELY from the self-funded reserve,
+            // and only declared when the reserve can pay it IN FULL — so a
+            // round flagged Motherlode always really pays the full multiple
             uint256 extra = distributable * (bonusMultiplier - 1);
-            if (extra > bonusReserve) extra = bonusReserve;
-            bonusReserve -= extra;
-            distributable += extra;
+            if (extra <= bonusReserve) {
+                bonusReserve -= extra;
+                distributable += extra;
+            } else {
+                isBonus = false;
+            }
         }
 
         uint256 winnerTotal = cellTotal[roundId][winningCell];
@@ -331,9 +349,10 @@ contract GroodV2 is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
         _startNewRound();
     }
 
-    /// @notice Re-pin an overdue round to a fresh future beacon. Permissionless,
-    ///         strictly forward-moving.
-    function repinRound(uint256 roundId) external {
+    /// @notice Re-pin an overdue round to a fresh future beacon. Owner-only
+    ///         and strictly forward-moving; the permissionless liveness path
+    ///         is requestVoid/voidStuckRound, which refunds rather than re-draws.
+    function repinRound(uint256 roundId) external onlyOwner {
         require(roundId == currentRoundId, "Wrong round");
         Round storage round = rounds[currentRoundId];
         require(!round.resolved, "Already resolved");
@@ -451,7 +470,8 @@ contract GroodV2 is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
         uint256 pool = rounds[roundId].totalStaked + stakeToAdd;
         uint256 fee = (pool * protocolFeeBps) / BPS_BASE;
         uint256 afterFee = pool - fee;
-        uint256 tip = afterFee < resolverTipWei ? afterFee : resolverTipWei;
+        uint256 tipCap = afterFee / 10;
+        uint256 tip = resolverTipWei < tipCap ? resolverTipWei : tipCap;
         uint256 dist = afterFee - tip;
         uint256 mine = stakeOf[roundId][cell][msg.sender] + stakeToAdd;
         uint256 cellTot = cellTotal[roundId][cell] + stakeToAdd;
@@ -484,13 +504,19 @@ contract GroodV2 is Initializable, Ownable2StepUpgradeable, UUPSUpgradeable {
 
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
+    /// @notice Permanently disabled: the owner is the only path to
+    ///         withdrawFees, setBeacon, repinRound and upgrades.
+    function renounceOwnership() public pure override {
+        revert("Renounce disabled");
+    }
+
     function setPaused(bool _v) external onlyOwner { paused = _v; emit PausedSet(_v); }
     function setFeeRecipient(address _v) external onlyOwner { require(_v != address(0), "Zero address"); feeRecipient = _v; emit FeeRecipientUpdated(_v); }
     function setGroodToken(address _v) external onlyOwner { require(_v != address(0), "Zero address"); groodToken = IGroodToken(_v); emit GroodTokenUpdated(_v); }
     function setBeacon(address _v) external onlyOwner { require(_v != address(0), "Zero address"); emit BeaconUpdated(address(beacon), _v); beacon = DrandBeacon(_v); }
     function setMinStake(uint256 _v) external onlyOwner { require(_v >= MIN_STAKE_LO && _v <= MIN_STAKE_HI, "Out of bounds"); minStakeWei = _v; emit ConfigUpdated("minStakeWei", _v); }
     function setRoundDuration(uint256 _v) external onlyOwner { require(_v >= 10 && _v <= 3600, "10s-1h"); roundDuration = _v; emit ConfigUpdated("roundDuration", _v); }
-    function setBeaconGap(uint256 _v) external onlyOwner { require(_v >= 1 && _v <= 60, "1-60s"); beaconGap = _v; emit ConfigUpdated("beaconGap", _v); }
+    function setBeaconGap(uint256 _v) external onlyOwner { require(_v >= 8 && _v <= 60, "8-60s"); beaconGap = _v; emit ConfigUpdated("beaconGap", _v); }
     function setResolverTip(uint256 _v) external onlyOwner { require(_v <= MAX_RESOLVER_TIP, "Tip>0.001"); resolverTipWei = _v; emit ConfigUpdated("resolverTipWei", _v); }
     function setProtocolFeeBps(uint256 _v) external onlyOwner { require(_v <= 2000, "Fee>20%"); protocolFeeBps = _v; emit ConfigUpdated("protocolFeeBps", _v); }
     function setGroodPerRound(uint256 _v) external onlyOwner { groodPerRound = _v; emit ConfigUpdated("groodPerRound", _v); }

@@ -1,20 +1,20 @@
 {
   "network": "robinhood-testnet",
   "chainId": 46630,
-  "deployedAt": "2026-07-29T07:28:32.368Z",
+  "deployedAt": "2026-07-29T17:31:08.714Z",
   "deployer": "0x52c59BC217fD0C0b2157f1B2Da1a12635E19Da4c",
   "feeRecipient": "0x52c59BC217fD0C0b2157f1B2Da1a12635E19Da4c",
-  "drandBeacon": "0x55aE706B727bb00938cC09651d6e11232A9FEd38",
-  "groodToken": "0xfc15d77179CD6c1223E0594F2f1d3F595A686fdE",
-  "groodTokenImpl": "0x2e01161c12515307c50Ccc26cB90F0b1Bb6B6982",
-  "grood": "0x7eDC7E0e270cD506Fbe12C9e8FA087C4090fA212",
-  "groodImpl": "0xE32Ef72344c1aA3A3eD2b6F666017C3Bc1a38928",
+  "drandBeacon": "0xA9Bd4EDF44249B9534c32455903650Ea9f19b35f",
+  "groodToken": "0x3bd82eAc9E80132249AcA011D126582D5593C1BA",
+  "groodTokenImpl": "0x3981499F21e4BF1A354CA571FA298eC8E2579bD9",
+  "grood": "0x660Fde58c594f338049529638996807D40290cfF",
+  "groodImpl": "0x012e07Df9DBABAF9778B40B9FAF237855284EB51",
   "params": {
     "minStakeWei": "100000000000000",
     "resolverTipWei": "30000000000000",
     "protocolFeeBps": "500",
     "roundDuration": "30",
-    "beaconGap": "2"
+    "beaconGap": "10"
   },
   "drand": {
     "network": "evmnet",
