@@ -4,7 +4,7 @@ import { usePrivy, useWallets, useSendTransaction } from "@privy-io/react-auth";
 import { useResolverSSE } from "./useResolverSSE";
 import { createPublicClient, http, fallback, parseEther, encodeFunctionData } from "viem";
 import {
-  robinhood, CHAIN_ID, RPC_URL, EXPLORER, GRID_ADDR, TOKEN_ADDR, USDG_ADDR,
+  robinhood, CHAIN_ID, RPC_URL, EXPLORER, GRID_ADDR,
   ALCHEMY_RPC, GAS_SPONSOR, SSE_URL, SUPABASE_URL, SUPABASE_ANON, DRAND_CHAIN_HASH,
 } from "@/lib/config";
 
@@ -53,18 +53,10 @@ const GRID_ABI = [
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { name: "resolverTipWei", type: "function", stateMutability: "view",
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "groodPerRound", type: "function", stateMutability: "view",
-    inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { name: "unclaimedWinnings", type: "function", stateMutability: "view",
     inputs: [{ name: "player", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
   { name: "withdrawWinnings", type: "function", stateMutability: "nonpayable",
     inputs: [], outputs: [] },
-];
-
-const TOKEN_ABI = [
-  { name: "balanceOf", type: "function", stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }] },
 ];
 
 // Quick-stake chips (ETH). Manual entry allowed down to MIN_STAKE.
@@ -141,7 +133,6 @@ export default function TheGrid() {
   const [myStakes, setMyStakes] = useState(new Array(TOTAL_CELLS).fill(0n));
   const [stakeAmount, setStakeAmount] = useState("0.001");
   const [unclaimed, setUnclaimed] = useState(0n);
-  const [gridBalance, setGridBalance] = useState("0");
   const [ethBalance, setEthBalance] = useState("0");
 
   // UI state
@@ -346,9 +337,6 @@ export default function TheGrid() {
           publicClient.readContract({
             address: GRID_ADDR, abi: GRID_ABI, functionName: "getPlayerStakes", args: [roundId, address],
           }).catch(() => null),
-          publicClient.readContract({
-            address: TOKEN_ADDR, abi: TOKEN_ABI, functionName: "balanceOf", args: [address],
-          }).catch(() => null),
           publicClient.getBalance({ address }).catch(() => null),
           publicClient.readContract({
             address: GRID_ADDR, abi: GRID_ABI, functionName: "unclaimedWinnings", args: [address],
@@ -393,9 +381,8 @@ export default function TheGrid() {
 
       // Process player data
       if (address) {
-        const [, , , stakes, gridBal, ethBal, owed] = results;
+        const [, , , stakes, ethBal, owed] = results;
         if (stakes) setMyStakes(Array.from({ length: TOTAL_CELLS }, (_, i) => BigInt(stakes[i])));
-        if (gridBal != null) setGridBalance(gridBal.toString());
         if (ethBal != null) setEthBalance(ethBal.toString());
         if (owed != null) setUnclaimed(BigInt(owed));
       }
@@ -844,14 +831,9 @@ export default function TheGrid() {
         {/* Right — balances + wallet */}
         <div style={{...S.hRight, gap:6, justifyContent:"flex-end", flexShrink:0}}>
           {authenticated && (
-            <>
-              <span style={S.hStat} className="grid-header-stat">
-                ● {fmtEth(gridBalance, 2)} <b style={{ color: "#009B04" }}>GROOD</b>
-              </span>
-              <span style={S.hStat} className="grid-header-stat">
-                ◆ {fmt(ethBalance)} <b style={{ color: "#00C805" }}>ETH</b>
-              </span>
-            </>
+            <span style={S.hStat} className="grid-header-stat">
+              ◆ {fmt(ethBalance)} <b style={{ color: "#00C805" }}>ETH</b>
+            </span>
           )}
           {/* Mobile: show balances inline */}
           {authenticated && (
@@ -860,8 +842,6 @@ export default function TheGrid() {
               fontSize: 11, letterSpacing: 0.5,
             }}>
               <span style={{ color: "#00C805" }}>{fmt(ethBalance)} <b>ETH</b></span>
-              <span style={{ color: "#4a6e5a" }}>|</span>
-              <span style={{ color: "#009B04" }}>{fmtEth(gridBalance, 2)} <b>GROOD</b></span>
             </span>
           )}
           {!authenticated ? (
@@ -879,8 +859,6 @@ export default function TheGrid() {
                 {/* Mobile: balances + short address */}
                 <span className="wallet-addr-mobile" style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "nowrap" }}>
                   <span style={{ fontSize: 10, color: "#00C805", fontWeight: 700 }}>{fmt(ethBalance)}<span style={{ fontSize: 9, opacity: 0.7 }}> E</span></span>
-                  <span style={{ color: "#2a4e3a", fontSize: 9 }}>|</span>
-                  <span style={{ fontSize: 10, color: "#009B04", fontWeight: 700 }}>{fmtEth(gridBalance, 0)}<span style={{ fontSize: 9, opacity: 0.7 }}> G</span></span>
                   <span style={{ color: "#2a4e3a", fontSize: 9 }}>·</span>
                   <span style={{ fontSize: 9 }}>{address ? `${address.slice(0, 4)}…${address.slice(-3)}` : "W"}</span>
                 </span>
@@ -1214,8 +1192,7 @@ export default function TheGrid() {
                 <span style={{ fontSize: 9, color: "#4a6e5a", letterSpacing: 1.5, fontWeight: 700 }}>CELL</span>
                 <span style={{ fontSize: 9, color: "#4a6e5a", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>POT</span>
                 <span style={{ fontSize: 9, color: "#4a6e5a", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>PLYR</span>
-                <span style={{ fontSize: 9, color: "#4a6e5a", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>GROOD</span>
-                <span style={{ fontSize: 9, color: "#4a6e5a", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>P&L</span>
+                                <span style={{ fontSize: 9, color: "#4a6e5a", letterSpacing: 1.5, fontWeight: 700, textAlign: "right" }}>P&L</span>
               </div>
               <div className="grid-user-history-scroll" style={{ maxHeight: 240, overflowY: "auto" }}>
                 {userHistory.map((h, i) => {
@@ -1458,8 +1435,8 @@ export default function TheGrid() {
             </div>
             <div style={S.statCard}>
               <span style={S.statLabel}>POT</span>
-              <span style={{ ...S.statValue, color: "#00C805" }}>
-                {fmt(potSize, 5)}<span style={{ fontSize: 11, opacity: 0.7 }}> ETH</span>
+              <span style={{ ...S.statValue, color: "#00C805", fontSize: 19, whiteSpace: "nowrap" }}>
+                {fmt(potSize, 4)}<span style={{ fontSize: 10, opacity: 0.7 }}> ETH</span>
               </span>
             </div>
           </div>
@@ -1565,7 +1542,7 @@ export default function TheGrid() {
           </div>
 
           <div style={S.railHint}>
-            ★ MOTHERLODE — 1 IN 100 ROUNDS PAYS 10× · RANDOMNESS BY DRAND, VERIFIED ON-CHAIN
+            RANDOMNESS BY DRAND — BEACON VERIFIED ON-CHAIN EVERY ROUND
           </div>
         </aside>
 
@@ -2013,7 +1990,7 @@ const S = {
     borderRadius: 10, padding: "12px 14px", minWidth: 0,
   },
   statLabel: { fontSize: 9, letterSpacing: 1.5, color: "#5a7e6a", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" },
-  statValue: { fontFamily: "'Orbitron', sans-serif", fontSize: 22, fontWeight: 900, color: "#e0f0e8", lineHeight: 1.1 },
+  statValue: { fontFamily: "'Orbitron', sans-serif", fontSize: 20, fontWeight: 900, color: "#e0f0e8", lineHeight: 1.15, whiteSpace: "nowrap" },
   statSub: { fontSize: 9, color: "#4a6e5a", letterSpacing: 0.5 },
   betPanel: {
     display: "flex", flexDirection: "column", gap: 12,

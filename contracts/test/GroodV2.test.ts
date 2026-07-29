@@ -295,60 +295,7 @@ describe("GroodV2 — variable-stake pari-mutuel", () => {
     await expect(rr.withdrawVia(await grood.getAddress())).to.be.reverted;
   });
 
-  it("Motherlode pays the FULL multiple from the reserve, or is not declared", async () => {
-    const { owner, alice, grood } = await loadFixture(deployAll);
-    const stake = 10n ** 17n; // 0.1 ETH
-    const { distributable, toReserve } = economics(stake);
 
-    // Seed enough that the full 9x extra is affordable
-    const needed = distributable * 9n;
-    await grood.connect(owner).depositBonusReserve({ value: needed });
-
-    const { id, targetEnd } = await openRoundPinnedTo(grood, ROUND_BONUS);
-    await time.setNextBlockTimestamp(targetEnd - 10n);
-    await stakeOn(grood, alice, id, 0, stake);
-
-    const balBefore = await ethers.provider.getBalance(alice.address);
-    await time.setNextBlockTimestamp(targetEnd + 1n);
-    await grood.connect(owner).resolveRound(id, SIG_BONUS);
-
-    const round = await grood.rounds(id);
-    expect(round.isBonusRound).to.equal(true);
-    // full 10x of the base prize, no partial payout
-    expect(round.distributable).to.equal(distributable * 10n);
-    expect(await ethers.provider.getBalance(alice.address)).to.equal(balBefore + distributable * 10n);
-    // reserve consumed exactly, plus this round's own fee share credited
-    expect(await grood.bonusReserve()).to.equal(toReserve);
-
-    // solvency invariant
-    const bal = await ethers.provider.getBalance(await grood.getAddress());
-    const reserved =
-      (await grood.rounds(await grood.currentRoundId())).totalStaked +
-      (await grood.pendingRefunds()) +
-      (await grood.pendingWithdrawals()) +
-      (await grood.bonusReserve()) +
-      (await grood.accumulatedFees());
-    expect(bal).to.be.greaterThanOrEqual(reserved);
-  });
-
-  it("does NOT declare a Motherlode the reserve cannot fully pay", async () => {
-    const { owner, alice, grood } = await loadFixture(deployAll);
-    const stake = 10n ** 17n;
-    const { distributable } = economics(stake);
-    // Seed far less than the 9x extra required
-    await grood.connect(owner).depositBonusReserve({ value: distributable });
-
-    const { id, targetEnd } = await openRoundPinnedTo(grood, ROUND_BONUS);
-    await time.setNextBlockTimestamp(targetEnd - 10n);
-    await stakeOn(grood, alice, id, 0, stake);
-    await time.setNextBlockTimestamp(targetEnd + 1n);
-    await grood.connect(owner).resolveRound(id, SIG_BONUS);
-
-    const round = await grood.rounds(id);
-    // beacon says bonus, but the reserve can't cover it -> normal round, no lie
-    expect(round.isBonusRound).to.equal(false);
-    expect(round.distributable).to.equal(distributable);
-  });
 
   it("records one staker per address per cell — top-ups add no records", async () => {
     const { owner, grood } = await loadFixture(deployAll);

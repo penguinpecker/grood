@@ -112,7 +112,7 @@ export default function HowToPlay() {
           <Step num="04" title="WINNERS GET PAID">
             If you picked the winning cell, you <span style={{ color: "#00C805", fontWeight: 600 }}>split the pot</span> with
             anyone else who picked the same cell. Fewer players on your cell = bigger payout.
-            All payouts are instant and on-chain. Winners also earn <Hl>$GROOD tokens</Hl>.
+            All payouts are instant and on-chain, split pro-rata to stake.
           </Step>
 
           <Step num="05" title="NEXT ROUND STARTS">
@@ -177,43 +177,14 @@ export default function HowToPlay() {
             No custodial risk. Your funds are in the smart contract until you win.
             Verify everything on Blockscout.
           </InfoCard>
-          <InfoCard icon="●" title="$GROOD REWARDS">
-            Winners earn <Hl>$GROOD tokens</Hl> on top of the USDG pot.
-            $GROOD is the native reward token — hold it, trade it, or accumulate for the Motherlode.
+          <InfoCard icon="●" title="PRO-RATA PAYOUTS">
+            The prize splits by <Hl>stake share</Hl>: put in 25% of the winning cell, take 25% of the prize.
+            Every wei has the same expected value wherever you place it.
           </InfoCard>
           <InfoCard icon="↗" title="INSTANT PAYOUTS">
             Winners receive USDG directly to their wallet within seconds of each round resolving.
             No claiming, no delays — just on-chain settlement on Robinhood Chain.
           </InfoCard>
-        </div>
-
-        {/* Special Rounds */}
-        <div style={S.specialsSection}>
-          <div style={S.specialsTitle}>SPECIAL ROUNDS</div>
-          <div style={S.specialCards}>
-            <div style={S.specialMotherlode}>
-              <div style={{ fontSize: 28, marginBottom: 10 }}>★</div>
-              <div style={{ ...S.specialName, color: "#FFD700" }}>MOTHERLODE</div>
-              <div style={{ fontSize: 11, color: "rgba(255,215,0,0.6)", marginBottom: 10 }}>
-                1 in 100 rounds (~every 50 minutes)
-              </div>
-              <div style={S.specialDesc}>
-                Winners get 10× the normal USDG payout plus 10× the $GROOD emission.
-                You won't know it's a Motherlode until the round resolves — every round could be the one.
-              </div>
-            </div>
-            <div style={S.specialBonus}>
-              <div style={{ fontSize: 28, marginBottom: 10 }}>⚡</div>
-              <div style={{ ...S.specialName, color: "#00C805" }}>UNRIGGABLE TRIGGER</div>
-              <div style={{ fontSize: 11, color: "rgba(0,200,5,0.6)", marginBottom: 10 }}>
-                derived from the drand beacon
-              </div>
-              <div style={S.specialDesc}>
-                Motherlodes are triggered by a second hash of the same drand beacon that picks the winner —
-                visible to everyone, manipulable by no one.
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* CTA */}

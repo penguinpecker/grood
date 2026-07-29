@@ -208,7 +208,7 @@ export default function HomePage() {
             {n:"01",icon:"🔐",t:"LOGIN",d:"Sign in with email, Google, or wallet. Privy creates an embedded wallet instantly — no seed phrase needed."},
             {n:"02",icon:"⬡",t:"PICK A CELL",d:"Stake any amount of ETH (min 0.0001) on any cells. Multiple players can stake the same cell — the prize splits pro-rata to stake."},
             {n:"03",icon:"🎲",t:"DRAND BEACON",d:"When the 30s round ends, the drand beacon pinned at round start is emitted. Its BLS signature is verified on-chain and picks the winner from occupied cells only."},
-            {n:"04",icon:"💰",t:"GET PAID",d:"Winners are paid automatically during resolution. No claim step. ETH goes straight to your wallet plus $GROOD rewards."},
+            {n:"04",icon:"💰",t:"GET PAID",d:"Winners are paid automatically during resolution. No claim step — ETH goes straight to your wallet, pro-rata to your stake on the winning cell."},
           ].map(({n,icon,t,d})=>(
             <div key={n} style={{padding:20,border:"1px solid rgba(0,155,4,0.15)",borderRadius:8,background:"rgba(0,155,4,0.03)",display:"flex",flexDirection:"column",gap:10}}>
               <span style={{fontFamily:"Orbitron,sans-serif",fontSize:10,fontWeight:700,color:"#009B04",background:"rgba(0,155,4,0.12)",borderRadius:4,padding:"2px 7px",display:"inline-block",letterSpacing:1,alignSelf:"flex-start"}}>{n}</span>
@@ -247,60 +247,10 @@ export default function HomePage() {
               you get = <b style={{color:"#00C805"}}>0.2375 ETH</b> (25% of cell)
             </div>
           </MechCard>
-          <MechCard title="$GROOD REWARDS">
-            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>Every resolved round mints <b style={{color:"#e0f0e8"}}>$GROOD tokens</b> to winners on top of ETH. TGE is deferred until meaningful user milestones — it&apos;s a gameplay reward, not a speculative asset.</p>
-          </MechCard>
-          <MechCard title="🔥 MOTHERLODE ROUNDS" gold>
-            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>1 in 100 rounds is a Motherlode. Winners get <b style={{color:"#FFD700"}}>10× the normal ETH payout</b> plus 10× $GROOD emission. Determined by a secondary hash of the drand beacon.</p>
-          </MechCard>
         </div>
       </section>
 
       <Divider/>
-
-      {/* ── $GROOD ── */}
-      <section style={{position:"relative",zIndex:5,padding:"60px 20px",maxWidth:960,margin:"0 auto"}}>
-        <div style={{textAlign:"center",marginBottom:40}}>
-          <div style={{fontSize:10,letterSpacing:3,color:"#00C805",fontWeight:700,marginBottom:8}}>TOKEN</div>
-          <div style={{fontFamily:"Orbitron,sans-serif",fontSize:24,fontWeight:700,letterSpacing:1,color:"#e0f0e8"}}>$GROOD</div>
-        </div>
-        <div className="four-col-grid" style={{marginBottom:16}}>
-          {[
-            {l:"SUPPLY MODEL",v:"EMISSION-ONLY",s:"No pre-mine — minted only to round winners",bc:"rgba(0,155,4,0.15)",bg:"rgba(0,155,4,0.04)",vs:15},
-            {l:"EMISSION / ROUND",v:"100",s:"$GROOD split among winning cell players",bc:"rgba(0,155,4,0.15)",bg:"rgba(0,155,4,0.04)",vc:"#00C805"},
-            {l:"MOTHERLODE",v:"1000",s:"10× emission on bonus rounds (1 in 100)",bc:"rgba(255,215,0,0.15)",bg:"rgba(255,215,0,0.03)",vc:"#FFD700"},
-            {l:"TGE",v:"DEFERRED",s:"Unlocks only after meaningful user milestones",bc:"rgba(0,200,5,0.15)",bg:"rgba(0,200,5,0.03)",vc:"#00C805",vs:15},
-          ].map(({l,v,s,bc,bg,vc,vs})=>(
-            <div key={l} style={{padding:16,border:`1px solid ${bc}`,borderRadius:8,background:bg,display:"flex",flexDirection:"column",gap:6}}>
-              <div style={{fontSize:9,letterSpacing:2,color:"#4a6e5a",fontWeight:700}}>{l}</div>
-              <div style={{fontFamily:"Orbitron,sans-serif",fontSize:vs||20,fontWeight:900,color:vc||"#e0f0e8",lineHeight:1.2}}>{v}</div>
-              <div style={{fontSize:10,color:"#7a9e8b"}}>{s}</div>
-            </div>
-          ))}
-        </div>
-        <div className="two-col-grid">
-          <div style={{padding:20,border:"1px solid rgba(0,155,4,0.15)",borderRadius:8,background:"rgba(0,155,4,0.03)",display:"flex",flexDirection:"column",gap:12}}>
-            <div style={{fontFamily:"Orbitron,sans-serif",fontSize:11,fontWeight:700,letterSpacing:1,color:"#e0f0e8"}}>HOW YOU EARN</div>
-            {[
-              {n:"01",text:<>Pick the winning cell — <b style={{color:"#e0f0e8"}}>100 $GROOD</b> split among all players on that cell</>},
-              {n:"02",text:<>Pick alone on winning cell — keep the entire <b style={{color:"#e0f0e8"}}>100 $GROOD</b> yourself</>},
-              {n:"🔥",text:<>Win a Motherlode — earn <b style={{color:"#FFD700"}}>1000 $GROOD</b> on top of 10× ETH</>,gold:true},
-            ].map(({n,text,gold})=>(
-              <div key={n} style={{display:"flex",alignItems:"flex-start",gap:10,fontSize:11,color:"#7a9e8b",lineHeight:1.6}}>
-                <span style={{fontFamily:"Orbitron,sans-serif",fontSize:9,color:gold?"#FFD700":"#009B04",background:gold?"rgba(255,215,0,0.08)":"rgba(0,155,4,0.12)",padding:"2px 6px",borderRadius:3,flexShrink:0,marginTop:2}}>{n}</span>
-                <span>{text}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{padding:20,border:"1px solid rgba(0,155,4,0.15)",borderRadius:8,background:"rgba(0,155,4,0.03)",display:"flex",flexDirection:"column",gap:12}}>
-            <div style={{fontFamily:"Orbitron,sans-serif",fontSize:11,fontWeight:700,letterSpacing:1,color:"#e0f0e8"}}>TGE TERMS</div>
-            <div style={{fontSize:11,color:"#7a9e8b",lineHeight:1.8}}>The TGE is <b style={{color:"#e0f0e8"}}>intentionally deferred</b> until Grood reaches meaningful player milestones. $GROOD earned now accumulates in your wallet.</div>
-            <div style={{background:"rgba(0,0,0,0.3)",border:"1px solid rgba(0,155,4,0.1)",borderRadius:6,padding:"10px 12px",fontSize:11,color:"#4a6e5a",lineHeight:1.8}}>
-              <b style={{color:"#00C805"}}>$GROOD is a gameplay reward</b> — not a speculative asset. Utility will be defined before TGE.
-            </div>
-          </div>
-        </div>
-      </section>
 
       <Divider/>
 

@@ -8,7 +8,7 @@
   "groodToken": "0x04E0867F6c9aFe9efD99DBD0E9C521E5Bf5Db62c",
   "groodTokenImpl": "0xC5c53BB4A93bCe76b99c726FFA1173Be31f14d8d",
   "grood": "0xfd5160C3D0F5F022118aDbBEb386E1B67CD13274",
-  "groodImpl": "0xfa29a5a324149a60086B3aeD20cBF42Bd761d5A1",
+  "groodImpl": "0x0D88848C3193024FD0E0e972F6D6b6898818f81A",
   "params": {
     "minStakeWei": "100000000000000",
     "resolverTipWei": "30000000000000",
@@ -21,5 +21,7 @@
     "chainHash": "04f1e9062b8a81f848fded9c12306733282b2727ecced50032187751166ec8c3",
     "genesis": 1727521075,
     "period": 3
-  }
+  },
+  "version": "V3",
+  "upgradedAt": "2026-07-29T18:39:20.867Z"
 }
