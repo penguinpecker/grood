@@ -801,22 +801,21 @@ export default function TheGrid() {
     return "empty";
   };
 
-  // Base logo grid pattern: outer=dark, inner=light, middle-row-center=opening
-  // 🟦🟦🟦🟦🟦  Row A (0-4)   — all dark
-  // 🟦⬜⬜⬜🟦  Row B (5-9)   — dark|light|light|light|dark
-  // 🟦⬜⬜⬜🟦  Row C (10-14) — dark|opening×3|dark
-  // 🟦⬜⬜⬜🟦  Row D (15-19) — dark|light|light|light|dark
-  // 🟦🟦🟦🟦🟦  Row E (20-24) — all dark
-  const DARK_CELLS = new Set([0,1,2,3,4, 5,9, 10,14, 15,19, 20,21,22,23,24]);
-  const OPENING_CELLS = new Set([11,12,13]);
-  const getCellZone = (idx) => {
-    if (DARK_CELLS.has(idx)) return "dark";
-    if (OPENING_CELLS.has(idx)) return "opening";
-    return "light";
-  };
-
   const canClaim = (idx) => {
     return !resolved && smoothTime > 0 && authenticated && playerCell < 0 && usdcApproved;
+  };
+
+  // Expected payout (raw 6-dec) for a cell if it wins — after fee + tip,
+  // split among everyone on the cell (including your prospective entry)
+  const payoutFor = (idx) => {
+    if (idx == null || idx < 0) return null;
+    const { feeBps, resolverReward } = feeConfig.current;
+    const joined = playerCell >= 0;
+    const pool = Number(potSize || 0) + (joined ? 0 : Number(CELL_COST_RAW));
+    const fee = Math.floor((pool * feeBps) / 10000);
+    const dist = Math.max(pool - fee - resolverReward, 0);
+    const winners = (cellCounts[idx] || 0) + (!joined ? 1 : 0);
+    return winners > 0 ? Math.floor(dist / winners) : dist;
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -824,18 +823,6 @@ export default function TheGrid() {
   // ═══════════════════════════════════════════════════════════════
   return (
     <div style={S.root}>
-      {/* Scan line */}
-      <div style={{
-        ...S.scanOverlay,
-        background: `linear-gradient(180deg,
-          transparent ${scanLine - 2}%,
-          rgba(0,155,4,0.12) ${scanLine - 1}%,
-          rgba(0,155,4,0.35) ${scanLine}%,
-          rgba(0,155,4,0.12) ${scanLine + 1}%,
-          transparent ${scanLine + 2}%)`,
-      }} />
-      <div style={S.crtLines} />
-
       {/* ─── HEADER ─── */}
       <header style={{...S.header, display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0 12px", gap:4}} className="grid-header">
         {/* Left — logo, clickable */}
@@ -1049,21 +1036,22 @@ export default function TheGrid() {
 
         {/* ─── GRID AREA ─── */}
         <div style={S.gridArea} className="grid-game-area">
-          {/* Timer */}
+          {/* Mobile stat strip (desktop shows the rail instead) */}
+          <div className="grid-mobile-stats" style={S.mobileStats}>
+            <div style={S.mobileStatCell}><span style={S.statLabel}>TIME</span><span style={{ ...S.mobileStatValue, color: timerColor }}>{Math.floor(smoothTime)}s</span></div>
+            <div style={S.mobileStatCell}><span style={S.statLabel}>POT</span><span style={{ ...S.mobileStatValue, color: "#00C805" }}>{fmt(potSize)}</span></div>
+            <div style={S.mobileStatCell}><span style={S.statLabel}>PLAYERS</span><span style={S.mobileStatValue}>{activePlayers}</span></div>
+            <div style={S.mobileStatCell}><span style={S.statLabel}>YOURS</span><span style={S.mobileStatValue}>{playerCell >= 0 ? CELL_LABELS[playerCell] : "—"}</span></div>
+          </div>
+
+          {/* Slim round progress */}
           <div style={S.timerWrap}>
             <div style={S.timerBarBg}>
               <div style={{
                 ...S.timerBarFill,
                 width: `${timerProgress * 100}%`,
                 backgroundColor: timerColor,
-                boxShadow: `0 0 20px ${timerColor}66`,
               }} />
-            </div>
-            <div style={{ minWidth: 70, textAlign: "right" }}>
-              <span style={{ ...S.timerNum, color: timerColor }}>
-                {Math.floor(smoothTime)}
-                <span style={S.timerMs}>.{Math.floor((smoothTime % 1) * 10)}</span>s
-              </span>
             </div>
           </div>
 
@@ -1103,30 +1091,22 @@ export default function TheGrid() {
             <div style={S.grid}>
               {CELL_LABELS.map((label, idx) => {
                 const state = getCellState(idx);
-                const zone = getCellZone(idx);
                 const isSelected = selectedCell === idx;
                 const isWinnerCell = resolved && winningCell === idx;
-                const zoneStyle = zone === "dark" ? S.cellDark
-                  : zone === "opening" ? S.cellOpening : S.cellLight;
-                const hoverZone = zone === "dark" ? S.cellDarkHover
-                  : zone === "opening" ? S.cellOpeningHover : S.cellLightHover;
+                const count = cellCounts[idx] || 0;
                 return (
                   <button
                     key={idx}
                     style={{
                       ...S.cell,
-                      ...zoneStyle,
-                      ...(state === "winner" ? S.cellWinner : {}),
-                      ...(state === "yours" ? S.cellYours : {}),
                       ...(state === "claimed" ? S.cellClaimed : {}),
+                      ...(state === "yours" ? S.cellYours : {}),
+                      ...(hoveredCell === idx && !isSelected && state !== "winner" && state !== "yours" ? S.cellHover : {}),
                       ...(isSelected ? S.cellSelected : {}),
+                      ...(state === "winner" ? S.cellWinner : {}),
                       ...(scanCell === idx && !resolved ? S.cellScanSweep : {}),
-                      ...(hoveredCell === idx && state === "empty" ? {
-                        ...hoverZone,
-                        transform: "translateY(-3px) scale(1.03)",
-                      } : {}),
-                      transition: "all 0.15s ease",
-                      animationDelay: isWinnerCell ? "0s" : `${Math.floor(idx / GRID_SIZE) * 0.08}s`,
+                      transition: "all 0.12s ease",
+                      animationDelay: isWinnerCell ? "0s" : `${Math.floor(idx / GRID_SIZE) * 0.05}s`,
                     }}
                     onMouseEnter={() => setHoveredCell(idx)}
                     onMouseLeave={() => setHoveredCell(-1)}
@@ -1147,10 +1127,20 @@ export default function TheGrid() {
                     onDoubleClick={() => { if (canClaim(idx) && !claiming) claimCell(idx); }}
                   >
                     <span style={S.cellLabel}>{label}</span>
-                    {state === "winner" && <span style={{ ...S.cellIcon, animation: "winnerPop 0.6s ease-out" }}>★</span>}
-                    {state === "yours" && <span style={S.cellIcon}>◈</span>}
-                    {state === "claimed" && state !== "yours" && <span style={S.cellIcon}>{cellCounts[idx] > 1 ? `${cellCounts[idx]}×` : "◈"}</span>}
-                    {state === "empty" && <span style={{ fontSize: 14, opacity: 0.25 }}>◇</span>}
+                    {count > 0 && state !== "winner" && state !== "yours" && (
+                      <span style={S.cellCount}>{count}</span>
+                    )}
+                    <span style={S.cellCenter}>
+                      {state === "winner" ? (
+                        <span style={{ fontSize: 26, animation: "winnerPop 0.6s ease-out" }}>★</span>
+                      ) : state === "yours" ? (
+                        <span style={S.cellYouTag}>YOU{count > 1 ? ` +${count - 1}` : ""}</span>
+                      ) : count > 0 ? (
+                        <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 17, fontWeight: 700, color: "#d0e8dc" }}>{count}</span>
+                      ) : (
+                        <span style={{ fontSize: 11, opacity: 0.15 }}>◇</span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
@@ -1160,55 +1150,28 @@ export default function TheGrid() {
           {/* Status */}
           <div style={S.statusBar}>
             <span style={{ fontWeight: 600 }}>{getStatus()}</span>
-            <span style={{ color: "#7a9e8b" }}>{activePlayers} PLAYERS</span>
+            <span className="grid-tap-hint" style={{ color: "#7a9e8b", fontSize: 10 }}>TAP TO SELECT · DOUBLE-TAP TO ENTER</span>
           </div>
 
-          {/* Player dots */}
-          <div style={S.dots}>
-            {Array.from({ length: TOTAL_CELLS }).map((_, i) => (
-              <div key={i} style={{
-                ...S.progressDot,
-                backgroundColor: i < activePlayers ? "#009B04" : "rgba(0,155,4,0.1)",
-              }} />
-            ))}
+          {/* Mobile betting controls (desktop uses the side rail) */}
+          <div className="grid-mobile-controls" style={{ width: "100%", maxWidth: 620 }}>
+            {authenticated && allowanceChecked && !usdcApproved && !approving && (
+              <button style={{ ...S.claimBtn, marginTop: 12, background: "linear-gradient(135deg, #00C805, #009B04)" }} onClick={approveUsdc}>
+                APPROVE USDG TO PLAY
+              </button>
+            )}
+            {approving && (
+              <div style={{ ...S.claimingBar, marginTop: 12 }}><div style={S.claimingDot} />APPROVING USDG...</div>
+            )}
+            {selectedCell !== null && !claiming && authenticated && usdcApproved && playerCell < 0 && (
+              <button style={{ ...S.claimBtn, marginTop: 12 }} onClick={() => claimCell(selectedCell)}>
+                ENTER {CELL_LABELS[selectedCell]} — {CELL_COST} USDG{payoutFor(selectedCell) != null ? ` · WIN ${fmt(payoutFor(selectedCell))}` : ""}
+              </button>
+            )}
+            {claiming && (
+              <div style={{ ...S.claimingBar, marginTop: 12 }}><div style={S.claimingDot} />CONFIRMING TX...</div>
+            )}
           </div>
-
-          {/* Approve USDG — one-time, shows when connected but not approved */}
-          {authenticated && allowanceChecked && !usdcApproved && !approving && (
-            <button style={{ ...S.claimBtn, maxWidth: 620, marginTop: 12, background: "linear-gradient(135deg, #00C805, #009B04)" }} onClick={approveUsdc}>
-              🔓 APPROVE USDG TO PLAY
-            </button>
-          )}
-          {authenticated && usdcApproved && allowanceChecked && !approving && wallet?.walletClientType === "privy" && (
-            <button style={{ ...S.claimBtn, maxWidth: 620, marginTop: 12, background: "none", border: "1px solid rgba(0,155,4,0.25)", color: "#4a6e5a", fontSize: 11 }} onClick={approveUsdc}>
-              ↻ TOP UP APPROVAL (100 USDG)
-            </button>
-          )}
-          {approving && (
-            <div style={{ ...S.claimingBar, maxWidth: 620, marginTop: 12 }}><div style={S.claimingDot} />APPROVING USDG...</div>
-          )}
-
-          {/* Quick instruction */}
-          {authenticated && usdcApproved && playerCell < 0 && !resolved && smoothTime > 0 && (
-            <div style={{
-              width: "100%", maxWidth: 620, textAlign: "center",
-              padding: "8px 12px", marginTop: 6,
-              fontSize: 10, letterSpacing: 1.5, color: "#4a6e5a",
-              fontFamily: "'JetBrains Mono', monospace",
-            }}>
-              ◆ TAP TO SELECT · DOUBLE-TAP TO CLAIM ◆
-            </div>
-          )}
-
-          {/* Claim button — below grid */}
-          {selectedCell !== null && !claiming && authenticated && usdcApproved && (
-            <button style={{ ...S.claimBtn, maxWidth: 520, marginTop: 12 }} onClick={() => claimCell(selectedCell)}>
-              ⬡ LOCK CELL {CELL_LABELS[selectedCell]} — {CELL_COST} USDG
-            </button>
-          )}
-          {claiming && (
-            <div style={{ ...S.claimingBar, maxWidth: 620, marginTop: 12 }}><div style={S.claimingDot} />CONFIRMING TX...</div>
-          )}
 
           {/* ─── MOBILE USER HISTORY (hidden on desktop, shown on mobile) ─── */}
           {authenticated && userHistory.length > 0 && (
@@ -1476,6 +1439,90 @@ export default function TheGrid() {
           })()}
         </div>
 
+        {/* ─── SIDE RAIL: stats + betting controls (desktop) ─── */}
+        <aside className="grid-rail" style={S.rail}>
+          <div style={S.railRow}>
+            <div style={S.statCard}>
+              <span style={S.statLabel}>TIME LEFT · R{round}</span>
+              <span style={{ ...S.statValue, color: timerColor }}>
+                {Math.floor(smoothTime)}<span style={{ fontSize: 14, opacity: 0.7 }}>.{Math.floor((smoothTime % 1) * 10)}s</span>
+              </span>
+            </div>
+            <div style={S.statCard}>
+              <span style={S.statLabel}>POT</span>
+              <span style={{ ...S.statValue, color: "#00C805" }}>
+                {fmt(potSize)}<span style={{ fontSize: 11, opacity: 0.7 }}> USDG</span>
+              </span>
+            </div>
+          </div>
+          <div style={S.railRow}>
+            <div style={S.statCard}>
+              <span style={S.statLabel}>PLAYERS</span>
+              <span style={S.statValue}>{activePlayers}</span>
+            </div>
+            <div style={S.statCard}>
+              <span style={S.statLabel}>YOUR ENTRY</span>
+              <span style={S.statValue}>{playerCell >= 0 ? CELL_LABELS[playerCell] : "—"}</span>
+              <span style={S.statSub}>{playerCell >= 0 ? "1 USDG DEPOSITED" : "NOT ENTERED"}</span>
+            </div>
+          </div>
+
+          <div style={S.betPanel}>
+            {(() => {
+              const focus = selectedCell != null ? selectedCell : (hoveredCell >= 0 ? hoveredCell : (playerCell >= 0 ? playerCell : null));
+              const pay = payoutFor(focus);
+              const nOn = focus != null ? (cellCounts[focus] || 0) : 0;
+              return (
+                <>
+                  <div style={S.betHead}>
+                    <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 17, fontWeight: 900, color: "#e0f0e8", letterSpacing: 1 }}>
+                      {focus != null ? `CELL ${CELL_LABELS[focus]}` : "PICK A CELL"}
+                    </span>
+                    {focus != null && (
+                      <span style={{ fontSize: 10, color: "#7a9e8b", letterSpacing: 0.5 }}>
+                        {nOn} PLAYER{nOn === 1 ? "" : "S"} ON IT
+                      </span>
+                    )}
+                  </div>
+                  <div style={S.betRows}>
+                    <div style={S.betRow}><span>Entry</span><b style={{ color: "#e0f0e8" }}>1 USDG</b></div>
+                    <div style={S.betRow}>
+                      <span>Payout if it wins</span>
+                      <b style={{ color: "#00C805", fontFamily: "'Orbitron', sans-serif" }}>{pay != null ? `${fmt(pay)} USDG` : "—"}</b>
+                    </div>
+                    <div style={S.betNote}>
+                      after {(feeConfig.current.feeBps / 100).toFixed(0)}% fee + {fmt(feeConfig.current.resolverReward, 1)} resolver tip, split among winners on the cell
+                    </div>
+                  </div>
+                  {!authenticated ? (
+                    <button style={S.betCta} onClick={login}>LOGIN TO PLAY</button>
+                  ) : allowanceChecked && !usdcApproved ? (
+                    approving
+                      ? <div style={S.claimingBar}><div style={S.claimingDot} />APPROVING USDG...</div>
+                      : <button style={S.betCta} onClick={approveUsdc}>APPROVE USDG TO PLAY</button>
+                  ) : playerCell >= 0 ? (
+                    <div style={S.betLocked}>◈ ENTERED ON {CELL_LABELS[playerCell]} — GOOD LUCK</div>
+                  ) : claiming ? (
+                    <div style={S.claimingBar}><div style={S.claimingDot} />CONFIRMING TX...</div>
+                  ) : smoothTime <= 0 ? (
+                    <div style={S.betLocked}>RESOLVING…</div>
+                  ) : selectedCell != null ? (
+                    <button style={S.betCta} onClick={() => claimCell(selectedCell)}>
+                      ENTER {CELL_LABELS[selectedCell]} — 1 USDG
+                    </button>
+                  ) : (
+                    <button style={{ ...S.betCta, opacity: 0.35, cursor: "default" }} disabled>SELECT A CELL</button>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+
+          <div style={S.railHint}>
+            ★ MOTHERLODE — 1 IN 100 ROUNDS PAYS 10× · RANDOMNESS BY DRAND, VERIFIED ON-CHAIN
+          </div>
+        </aside>
+
       </div>
 
       {/* Debug: show poll errors visibly */}
@@ -1556,6 +1603,18 @@ export default function TheGrid() {
         @keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 4px #00C805}50%{opacity:0.4;box-shadow:0 0 10px #00C805} }
         .nav-btn-home:hover { color: #00C805 !important; }
         .nav-btn-play { pointer-events: none; }
+        .grid-rail { position: sticky; top: 78px; }
+        @media (max-width: 1024px) {
+          .grid-rail { display: none !important; }
+          .grid-main { flex-direction: column !important; align-items: center !important; }
+        }
+        @media (max-width: 640px) {
+          .grid-tap-hint { display: none !important; }
+        }
+        @media (min-width: 1025px) {
+          .grid-mobile-stats { display: none !important; }
+          .grid-mobile-controls { display: none !important; }
+        }
         .wallet-addr-mobile { display: none !important; }
         .wallet-addr-desktop { display: inline !important; }
         @media (max-width: 640px) {
@@ -1722,75 +1781,82 @@ const S = {
     color: "#00C805", cursor: "pointer", letterSpacing: 1.5,
   },
   menuBtn: { fontSize: 20, background: "none", border: "1px solid rgba(255,255,255,0.15)", color: "#c8e5d6", borderRadius: 6, padding: "4px 10px", cursor: "pointer" },
-  main: { display: "flex", flex: 1, gap: 0, position: "relative", zIndex: 5 },
-  gridArea: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", padding: "16px 24px", minHeight: 0, overflowY: "auto" },
-  timerWrap: { width: "100%", maxWidth: 620, display: "flex", alignItems: "center", gap: 12, marginBottom: 12 },
-  timerBarBg: { flex: 1, height: 12, borderRadius: 6, background: "rgba(255,255,255,0.08)", overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" },
-  timerBarFill: { height: "100%", borderRadius: 6 },
+  main: { display: "flex", flex: 1, gap: 28, position: "relative", zIndex: 5, width: "100%", maxWidth: 1240, margin: "0 auto", padding: "0 24px", alignItems: "flex-start", justifyContent: "center" },
+  gridArea: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", padding: "16px 0", minHeight: 0, maxWidth: 780 },
+  timerWrap: { width: "100%", maxWidth: "min(74vh, 720px)", display: "flex", alignItems: "center", gap: 12, marginBottom: 10 },
+  timerBarBg: { flex: 1, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.07)", overflow: "hidden" },
+  timerBarFill: { height: "100%", borderRadius: 3, transition: "background-color 0.4s ease" },
   timerNum: { fontFamily: "'Orbitron', sans-serif", fontSize: 20, fontWeight: 700, transition: "color 0.5s ease" },
   timerMs: { fontSize: 14, opacity: 0.7 },
-  gridOuter: { position: "relative", width: "100%", maxWidth: 620, padding: 12 },
+  gridOuter: { position: "relative", width: "100%", maxWidth: "min(74vh, 720px)", padding: 10 },
   cornerTL: { position: "absolute", top: 0, left: 0, width: 20, height: 20, borderLeft: "2px solid rgba(0,155,4,0.4)", borderTop: "2px solid rgba(0,155,4,0.4)" },
   cornerTR: { position: "absolute", top: 0, right: 0, width: 20, height: 20, borderRight: "2px solid rgba(0,155,4,0.4)", borderTop: "2px solid rgba(0,155,4,0.4)" },
   cornerBL: { position: "absolute", bottom: 0, left: 0, width: 20, height: 20, borderLeft: "2px solid rgba(0,155,4,0.4)", borderBottom: "2px solid rgba(0,155,4,0.4)" },
   cornerBR: { position: "absolute", bottom: 0, right: 0, width: 20, height: 20, borderRight: "2px solid rgba(0,155,4,0.4)", borderBottom: "2px solid rgba(0,155,4,0.4)" },
-  grid: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, width: "100%" },
+  grid: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, width: "100%" },
   cell: {
     fontFamily: "'JetBrains Mono', monospace", position: "relative",
-    aspectRatio: "1", minHeight: 64,
-    borderRadius: 8,
-    cursor: "pointer", display: "flex", flexDirection: "column",
-    alignItems: "center", justifyContent: "center", gap: 2,
-    fontSize: 11, fontWeight: 600, transition: "all 0.15s ease",
+    aspectRatio: "1", borderRadius: 10,
+    cursor: "pointer", display: "flex",
+    alignItems: "center", justifyContent: "center",
+    fontSize: 11, fontWeight: 600,
     animation: "cellAppear 0.4s ease both",
     touchAction: "manipulation",
-    border: "none",
+    background: "rgba(0,200,5,0.05)",
+    border: "1px solid rgba(0,200,5,0.14)",
+    color: "#c8e5d6",
   },
-  // ── Base logo zones ──
-  cellDark: {
-    background: "linear-gradient(145deg, #0E6022 0%, #0A4A1A 60%, #084013 100%)",
-    border: "1px solid rgba(0,155,4,0.25)",
-    color: "rgba(140,220,170,0.45)",
-    boxShadow: "inset 0 1px 3px rgba(0,0,0,0.4), 0 0 4px rgba(0,155,4,0.06)",
+  cellHover: {
+    background: "rgba(0,200,5,0.13)",
+    border: "1px solid #26D02B",
+    transform: "translateY(-2px)",
   },
-  cellLight: {
-    background: "linear-gradient(145deg, rgba(210,255,225,0.14) 0%, rgba(190,250,210,0.09) 60%, rgba(170,240,195,0.06) 100%)",
-    border: "1px solid rgba(200,255,220,0.2)",
-    color: "rgba(210,250,225,0.7)",
-    boxShadow: "inset 0 1px 5px rgba(255,255,255,0.04), 0 0 6px rgba(200,255,220,0.04)",
+  cellCount: {
+    position: "absolute", top: 6, right: 6,
+    fontSize: 9, fontWeight: 700, lineHeight: 1,
+    padding: "3px 6px", borderRadius: 8,
+    background: "rgba(0,200,5,0.25)", color: "#e0f0e8",
   },
-  cellOpening: {
-    background: "linear-gradient(145deg, rgba(230,255,240,0.18) 0%, rgba(215,255,230,0.13) 60%, rgba(200,250,218,0.09) 100%)",
-    border: "1px solid rgba(220,255,235,0.24)",
-    color: "rgba(225,255,238,0.8)",
-    boxShadow: "inset 0 1px 6px rgba(255,255,255,0.06), 0 0 8px rgba(220,255,235,0.06)",
+  cellCenter: { display: "flex", alignItems: "center", justifyContent: "center" },
+  cellYouTag: {
+    fontFamily: "'Orbitron', sans-serif", fontSize: 10, fontWeight: 900,
+    letterSpacing: 1, color: "#06140A", background: "#00C805",
+    padding: "3px 7px", borderRadius: 4,
   },
-  cellDarkHover: {
-    background: "linear-gradient(145deg, #12702A 0%, #0D5820 60%, #0A4818 100%)",
-    borderColor: "rgba(0,155,4,0.5)",
-    color: "rgba(200,250,215,0.8)",
-    boxShadow: "inset 0 1px 3px rgba(0,0,0,0.3), 0 0 16px rgba(0,155,4,0.2)",
+  cellClaimed: {
+    background: "rgba(0,200,5,0.1)",
+    border: "1px solid rgba(0,200,5,0.35)",
   },
-  cellLightHover: {
-    background: "linear-gradient(145deg, rgba(225,255,238,0.22) 0%, rgba(205,255,222,0.16) 60%, rgba(185,250,208,0.12) 100%)",
-    borderColor: "rgba(225,255,240,0.38)",
-    color: "rgba(240,255,245,0.95)",
-    boxShadow: "inset 0 1px 5px rgba(255,255,255,0.08), 0 0 18px rgba(200,255,220,0.1)",
+  cellYours: {
+    background: "rgba(0,200,5,0.22)",
+    border: "2px solid #00C805",
   },
-  cellOpeningHover: {
-    background: "linear-gradient(145deg, rgba(240,255,248,0.28) 0%, rgba(228,255,240,0.2) 60%, rgba(215,255,232,0.16) 100%)",
-    borderColor: "rgba(240,255,248,0.42)",
-    color: "white",
-    boxShadow: "inset 0 1px 6px rgba(255,255,255,0.12), 0 0 22px rgba(220,255,235,0.14)",
+  cellWinner: {
+    background: "rgba(255,215,0,0.22)",
+    border: "2px solid #FFD700",
+    color: "#FFD700",
+    transform: "scale(1.05)",
+    boxShadow: "0 6px 24px rgba(255,215,0,0.25)",
+    zIndex: 2,
   },
-  cellClaimed: { borderColor: "rgba(0,155,4,0.5)", color: "#00C805" },
-  cellYours: { borderColor: "rgba(0,155,4,0.65)", color: "#40D644", animation: "glow 2s ease-in-out infinite" },
-  cellWinner: { background: "rgba(255,215,0,0.12)", borderColor: "rgba(255,215,0,0.55)", color: "#FFD700", boxShadow: "0 0 20px rgba(255,215,0,0.4), inset 0 0 12px rgba(255,215,0,0.15)", animation: "winnerGlow 1.5s ease-in-out infinite" },
-  cellSelected: { background: "rgba(0,155,4,0.22)", borderColor: "#009B04", color: "#fff", boxShadow: "0 0 24px rgba(0,155,4,0.4)" },
-  cellScanSweep: { background: "rgba(255,215,0,0.18)", borderColor: "rgba(255,215,0,0.7)", color: "#FFD700", boxShadow: "0 0 26px rgba(255,215,0,0.5), inset 0 0 14px rgba(255,215,0,0.2)", transform: "scale(1.04)" },
-  cellLabel: { letterSpacing: 1 },
+  cellSelected: {
+    background: "rgba(0,200,5,0.22)",
+    border: "2px solid #00C805",
+    color: "#fff",
+    transform: "scale(1.04)",
+    boxShadow: "0 6px 20px rgba(0,200,5,0.2)",
+    zIndex: 2,
+  },
+  cellScanSweep: {
+    background: "rgba(255,215,0,0.2)",
+    border: "2px solid rgba(255,215,0,0.75)",
+    color: "#FFD700",
+    transform: "scale(1.04)",
+    zIndex: 2,
+  },
+  cellLabel: { position: "absolute", top: 6, left: 8, fontSize: 9, letterSpacing: 1, opacity: 0.5 },
   cellIcon: { fontSize: 16 },
-  statusBar: { display: "flex", justifyContent: "space-between", width: "100%", maxWidth: 620, padding: "8px 12px", marginTop: 8, fontSize: 11, letterSpacing: 1.5, color: "#5a7e6a" },
+  statusBar: { display: "flex", justifyContent: "space-between", width: "100%", maxWidth: "min(74vh, 720px)", padding: "8px 12px", marginTop: 8, fontSize: 11, letterSpacing: 1.5, color: "#5a7e6a" },
   dots: { display: "flex", gap: 3, width: "100%", maxWidth: 620, padding: "0 12px" },
   progressDot: { flex: 1, height: 3, borderRadius: 2, transition: "background-color 0.5s ease" },
   sidebar: {
@@ -1844,4 +1910,46 @@ const S = {
     background: "rgba(0,0,0,0.4)", border: "1px solid rgba(0,155,4,0.15)",
     borderRadius: 6, color: "#c8e5d6", outline: "none", letterSpacing: 0.3,
   },
+
+  // ── Side rail (desktop) ──
+  rail: { width: 352, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12, padding: "16px 0" },
+  railRow: { display: "flex", gap: 12 },
+  statCard: {
+    flex: 1, display: "flex", flexDirection: "column", gap: 4,
+    background: "rgba(0,200,5,0.04)", border: "1px solid rgba(0,200,5,0.13)",
+    borderRadius: 10, padding: "12px 14px", minWidth: 0,
+  },
+  statLabel: { fontSize: 9, letterSpacing: 1.5, color: "#5a7e6a", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" },
+  statValue: { fontFamily: "'Orbitron', sans-serif", fontSize: 22, fontWeight: 900, color: "#e0f0e8", lineHeight: 1.1 },
+  statSub: { fontSize: 9, color: "#4a6e5a", letterSpacing: 0.5 },
+  betPanel: {
+    display: "flex", flexDirection: "column", gap: 12,
+    background: "rgba(0,200,5,0.05)", border: "1px solid rgba(0,200,5,0.2)",
+    borderRadius: 12, padding: 16,
+  },
+  betHead: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
+  betRows: { display: "flex", flexDirection: "column", gap: 6 },
+  betRow: { display: "flex", justifyContent: "space-between", fontSize: 12, color: "#7a9e8b" },
+  betNote: { fontSize: 9.5, color: "#4a6e5a", lineHeight: 1.5 },
+  betCta: {
+    fontFamily: "'Orbitron', sans-serif", fontSize: 13, fontWeight: 700,
+    padding: "14px 16px", borderRadius: 8, border: "none",
+    background: "linear-gradient(135deg, #00C805, #009B04)",
+    color: "#fff", cursor: "pointer", letterSpacing: 1, width: "100%",
+  },
+  betLocked: {
+    padding: "12px 16px", textAlign: "center", borderRadius: 8,
+    border: "1px solid rgba(0,200,5,0.35)", color: "#00C805",
+    fontSize: 12, fontWeight: 700, letterSpacing: 1,
+  },
+  railHint: { fontSize: 9, color: "#4a6e5a", letterSpacing: 1, lineHeight: 1.7, textAlign: "center", padding: "0 8px" },
+
+  // ── Mobile stat strip ──
+  mobileStats: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, width: "100%", maxWidth: 620, marginBottom: 10 },
+  mobileStatCell: {
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+    background: "rgba(0,200,5,0.05)", border: "1px solid rgba(0,200,5,0.13)",
+    borderRadius: 8, padding: "8px 4px",
+  },
+  mobileStatValue: { fontFamily: "'Orbitron', sans-serif", fontSize: 14, fontWeight: 900, color: "#e0f0e8" },
 };
