@@ -50,6 +50,11 @@ const config: HardhatUserConfig = {
       accounts: { count: 120 },
     },
   },
+  sourcify: {
+    enabled: true,
+    apiUrl: "https://sourcify.dev/server",
+    browserUrl: "https://repo.sourcify.dev",
+  },
   etherscan: {
     apiKey: {
       robinhood: process.env.EXPLORER_API_KEY || "blockscout",
