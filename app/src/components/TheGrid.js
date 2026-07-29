@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { usePrivy, useWallets, useSendTransaction } from "@privy-io/react-auth";
 import { useResolverSSE } from "./useResolverSSE";
-import { createPublicClient, http, fallback, parseUnits, encodeFunctionData } from "viem";
+import { createPublicClient, http, fallback, parseEther, encodeFunctionData } from "viem";
 import {
   robinhood, CHAIN_ID, RPC_URL, EXPLORER, GRID_ADDR, TOKEN_ADDR, USDG_ADDR,
   ALCHEMY_RPC, GAS_SPONSOR, SSE_URL, SUPABASE_URL, SUPABASE_ANON, DRAND_CHAIN_HASH,
@@ -11,58 +11,54 @@ import {
 // ═══════════════════════════════════════════════════════════════
 // GROOD CONTRACT ABI — drand-powered 5x5 grid game (Auto-Pay)
 // Chain: Robinhood Chain (see lib/config.js — env-switchable to testnet)
-// Entry token: USDG (Paxos Global Dollar, 6 decimals)
+// Stake asset: native ETH (variable amounts, pro-rata payouts)
 // Randomness: drand evmnet beacon, BLS-verified on-chain
 // ═══════════════════════════════════════════════════════════════
 const GRID_ABI = [
   { name: "currentRoundId", type: "function", stateMutability: "view",
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "getCurrentRound", type: "function", stateMutability: "view",
-    inputs: [],
-    outputs: [
-      { name: "roundId", type: "uint256" },
-      { name: "startTime", type: "uint64" },
-      { name: "endTime", type: "uint64" },
-      { name: "totalDeposits", type: "uint256" },
-      { name: "totalPlayers", type: "uint256" },
-      { name: "timeRemaining", type: "uint256" },
-    ] },
   { name: "rounds", type: "function", stateMutability: "view",
     inputs: [{ name: "roundId", type: "uint256" }],
     outputs: [
       { name: "startTime", type: "uint64" },
       { name: "endTime", type: "uint64" },
-      { name: "totalDeposits", type: "uint256" },
-      { name: "totalPlayers", type: "uint256" },
+      { name: "drandRound", type: "uint64" },
       { name: "winningCell", type: "uint8" },
       { name: "resolved", type: "bool" },
       { name: "isBonusRound", type: "bool" },
-      { name: "drandRound", type: "uint64" },
+      { name: "totalStaked", type: "uint256" },
+      { name: "totalStakers", type: "uint256" },
+      { name: "winnerTotal", type: "uint256" },
+      { name: "distributable", type: "uint256" },
+      { name: "groodBase", type: "uint256" },
     ] },
-  { name: "playerCell", type: "function", stateMutability: "view",
+  { name: "stake", type: "function", stateMutability: "payable",
+    inputs: [
+      { name: "roundId", type: "uint256" },
+      { name: "cells", type: "uint8[]" },
+      { name: "amounts", type: "uint256[]" },
+    ], outputs: [] },
+  { name: "getCellTotals", type: "function", stateMutability: "view",
+    inputs: [{ name: "roundId", type: "uint256" }],
+    outputs: [{ name: "totals", type: "uint256[25]" }] },
+  { name: "getCellStakerCounts", type: "function", stateMutability: "view",
+    inputs: [{ name: "roundId", type: "uint256" }],
+    outputs: [{ name: "counts", type: "uint256[25]" }] },
+  { name: "getPlayerStakes", type: "function", stateMutability: "view",
     inputs: [{ name: "roundId", type: "uint256" }, { name: "player", type: "address" }],
-    outputs: [{ name: "", type: "uint8" }] },
-  { name: "pickCell", type: "function", stateMutability: "nonpayable",
-    inputs: [{ name: "cell", type: "uint8" }], outputs: [] },
-  { name: "entryFee", type: "function", stateMutability: "view",
+    outputs: [{ name: "stakes", type: "uint256[25]" }] },
+  { name: "minStakeWei", type: "function", stateMutability: "view",
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "roundDuration", type: "function", stateMutability: "view",
+  { name: "protocolFeeBps", type: "function", stateMutability: "view",
+    inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "resolverTipWei", type: "function", stateMutability: "view",
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { name: "groodPerRound", type: "function", stateMutability: "view",
     inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "hasJoined", type: "function", stateMutability: "view",
-    inputs: [{ name: "roundId", type: "uint256" }, { name: "player", type: "address" }],
-    outputs: [{ name: "", type: "bool" }] },
-  { name: "getCellCounts", type: "function", stateMutability: "view",
-    inputs: [{ name: "roundId", type: "uint256" }],
-    outputs: [{ name: "counts", type: "uint256[25]" }] },
-  { name: "getCellPlayers", type: "function", stateMutability: "view",
-    inputs: [{ name: "roundId", type: "uint256" }, { name: "cell", type: "uint8" }],
-    outputs: [{ name: "", type: "address[]" }] },
-  { name: "protocolFeeBps", type: "function", stateMutability: "view",
-    inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "resolverReward", type: "function", stateMutability: "view",
-    inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "unclaimedWinnings", type: "function", stateMutability: "view",
+    inputs: [{ name: "player", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { name: "withdrawWinnings", type: "function", stateMutability: "nonpayable",
+    inputs: [], outputs: [] },
 ];
 
 const TOKEN_ABI = [
@@ -71,18 +67,9 @@ const TOKEN_ABI = [
     outputs: [{ name: "", type: "uint256" }] },
 ];
 
-const USDC_ABI = [
-  { name: "balanceOf", type: "function", stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }] },
-  { name: "allowance", type: "function", stateMutability: "view",
-    inputs: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }], outputs: [{ type: "uint256" }] },
-  { name: "approve", type: "function", stateMutability: "nonpayable",
-    inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] },
-];
-
-const USDC_ADDR = USDG_ADDR;
-const CELL_COST = "1";  // 1 USDG
-const CELL_COST_RAW = 1000000n; // 1 USDG in 6 decimals
+// Quick-stake chips (ETH). Manual entry allowed down to MIN_STAKE.
+const STAKE_CHIPS = ["0.0001", "0.001", "0.01", "0.1", "1"];
+const MIN_STAKE_DEFAULT = 100000000000000n; // 0.0001 ETH
 const ROUND_DURATION = 60;
 const GRID_SIZE = 5;
 const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
@@ -111,12 +98,16 @@ const publicClient = createPublicClient({
   ]),
 });
 
-const fmt = (v, d = 2) => {
-  if (!v) return "0." + "0".repeat(d);
-  return (Number(v) / 1e6).toFixed(d);
+// ETH display: trims to significant digits without scientific notation
+const fmt = (v, d = 4) => {
+  if (!v) return (0).toFixed(d);
+  const n = Number(v) / 1e18;
+  if (n === 0) return (0).toFixed(d);
+  if (n < 0.0001) return n.toFixed(6);
+  return n.toFixed(d);
 };
-const fmtEth = (v, d = 4) => {
-  if (!v) return "0." + "0".repeat(d);
+const fmtEth = (v, d = 2) => {
+  if (!v) return (0).toFixed(d);
   return (Number(v) / 1e18).toFixed(d);
 };
 
@@ -138,12 +129,12 @@ export default function TheGrid() {
   const [winningCell, setWinningCell] = useState(-1);
   const [claimedCells, setClaimedCells] = useState(new Set());
   const [cellCounts, setCellCounts] = useState(new Array(TOTAL_CELLS).fill(0));
-  const [playerCell, setPlayerCell] = useState(-1);
+  const [cellTotals, setCellTotals] = useState(new Array(TOTAL_CELLS).fill(0n));
+  const [myStakes, setMyStakes] = useState(new Array(TOTAL_CELLS).fill(0n));
+  const [stakeAmount, setStakeAmount] = useState("0.001");
+  const [unclaimed, setUnclaimed] = useState(0n);
   const [gridBalance, setGridBalance] = useState("0");
   const [ethBalance, setEthBalance] = useState("0");
-  const [usdcApproved, setUsdcApproved] = useState(false);
-  const [allowanceChecked, setAllowanceChecked] = useState(false);
-  const [approving, setApproving] = useState(false);
 
   // UI state
   const [smoothTime, setSmoothTime] = useState(0);
@@ -170,7 +161,7 @@ export default function TheGrid() {
   const [walletView, setWalletView] = useState("menu"); // "menu" | "withdraw"
   const walletDropdownRef = useRef(null);
   const [lastResult, setLastResult] = useState(null); // { roundId, cell, players, pot, txHash }
-  const feeConfig = useRef({ feeBps: 500, resolverReward: 100000 }); // defaults, updated from chain
+  const feeConfig = useRef({ feeBps: 500n, resolverTipWei: 30000000000000n, minStakeWei: MIN_STAKE_DEFAULT }); // defaults, updated from chain
   const [roundHistory, setRoundHistory] = useState([]); // array of ALL loaded past results, newest first
   const [moneyFlow, setMoneyFlow] = useState(false);
   const [gridFlash, setGridFlash] = useState(false);
@@ -221,9 +212,10 @@ export default function TheGrid() {
   useEffect(() => {
     Promise.all([
       publicClient.readContract({ address: GRID_ADDR, abi: GRID_ABI, functionName: "protocolFeeBps" }).catch(() => 500n),
-      publicClient.readContract({ address: GRID_ADDR, abi: GRID_ABI, functionName: "resolverReward" }).catch(() => 100000n),
-    ]).then(([bps, rr]) => {
-      feeConfig.current = { feeBps: Number(bps), resolverReward: Number(rr) };
+      publicClient.readContract({ address: GRID_ADDR, abi: GRID_ABI, functionName: "resolverTipWei" }).catch(() => 30000000000000n),
+      publicClient.readContract({ address: GRID_ADDR, abi: GRID_ABI, functionName: "minStakeWei" }).catch(() => MIN_STAKE_DEFAULT),
+    ]).then(([bps, tip, minS]) => {
+      feeConfig.current = { feeBps: BigInt(bps), resolverTipWei: BigInt(tip), minStakeWei: BigInt(minS) };
     });
   }, []);
 
@@ -333,7 +325,10 @@ export default function TheGrid() {
           address: GRID_ADDR, abi: GRID_ABI, functionName: "rounds", args: [roundId],
         }).catch(() => null),
         publicClient.readContract({
-          address: GRID_ADDR, abi: GRID_ABI, functionName: "getCellCounts", args: [roundId],
+          address: GRID_ADDR, abi: GRID_ABI, functionName: "getCellStakerCounts", args: [roundId],
+        }).catch(() => null),
+        publicClient.readContract({
+          address: GRID_ADDR, abi: GRID_ABI, functionName: "getCellTotals", args: [roundId],
         }).catch(() => null),
       ];
 
@@ -341,34 +336,32 @@ export default function TheGrid() {
       if (address) {
         promises.push(
           publicClient.readContract({
-            address: GRID_ADDR, abi: GRID_ABI, functionName: "hasJoined", args: [roundId, address],
+            address: GRID_ADDR, abi: GRID_ABI, functionName: "getPlayerStakes", args: [roundId, address],
           }).catch(() => null),
           publicClient.readContract({
             address: TOKEN_ADDR, abi: TOKEN_ABI, functionName: "balanceOf", args: [address],
           }).catch(() => null),
+          publicClient.getBalance({ address }).catch(() => null),
           publicClient.readContract({
-            address: USDC_ADDR, abi: USDC_ABI, functionName: "balanceOf", args: [address],
-          }).catch(() => null),
-          publicClient.readContract({
-            address: USDC_ADDR, abi: USDC_ABI, functionName: "allowance", args: [address, GRID_ADDR],
+            address: GRID_ADDR, abi: GRID_ABI, functionName: "unclaimedWinnings", args: [address],
           }).catch(() => null),
         );
       }
 
       const results = await Promise.all(promises);
-      const [rd, counts] = results;
+      const [rd, counts, totals] = results;
 
       // Process round data
       if (rd) {
         setRoundStart(Number(rd[0]));
         setRoundEnd(Number(rd[1]));
-        setPotSize(rd[2].toString());
-        setActivePlayers(Number(rd[3]));
-        const isResolved = rd[5];
+        setPotSize(rd[6].toString());
+        setActivePlayers(Number(rd[7]));
+        const isResolved = rd[4];
         setResolved(isResolved);
         resolvedRef.current = isResolved;
-        if (isResolved && Number(rd[4]) >= 0) {
-          setWinningCell(Number(rd[4]));
+        if (isResolved && Number(rd[3]) >= 0) {
+          setWinningCell(Number(rd[3]));
         } else if (!isResolved) {
           setWinningCell(-1);
         }
@@ -386,28 +379,17 @@ export default function TheGrid() {
         setClaimedCells(claimed);
         setCellCounts(countsArr);
       }
+      if (totals) {
+        setCellTotals(Array.from({ length: TOTAL_CELLS }, (_, i) => BigInt(totals[i])));
+      }
 
       // Process player data
       if (address) {
-        const [, , joined, gridBal, usdcBal, allowance] = results;
-
-        if (joined === true) {
-          try {
-            const pc = await publicClient.readContract({
-              address: GRID_ADDR, abi: GRID_ABI, functionName: "playerCell", args: [roundId, address],
-            });
-            setPlayerCell(Number(pc) - 1);
-          } catch (e) { console.error("Poll: playerCell failed", e); }
-        } else if (joined === false) {
-          setPlayerCell(-1);
-        }
-
+        const [, , , stakes, gridBal, ethBal, owed] = results;
+        if (stakes) setMyStakes(Array.from({ length: TOTAL_CELLS }, (_, i) => BigInt(stakes[i])));
         if (gridBal != null) setGridBalance(gridBal.toString());
-        if (usdcBal != null) setEthBalance(usdcBal.toString());
-        if (allowance != null) {
-          setUsdcApproved(allowance >= CELL_COST_RAW);
-          if (!allowanceChecked) setAllowanceChecked(true);
-        }
+        if (ethBal != null) setEthBalance(ethBal.toString());
+        if (owed != null) setUnclaimed(BigInt(owed));
       }
     } catch (e) {
       pollError.current = "Poll error: " + (e.shortMessage || e.message || "unknown");
@@ -537,7 +519,7 @@ export default function TheGrid() {
         pot: h.gz_rounds?.total_deposits || "0",
         players: h.gz_rounds?.total_players || "—",
         numWinners: winnersMap[h.round_id] || 1,
-        cost: "1000000", // 1 USDG
+        amountWei: h.amount_wei || "0",
       }));
     } catch (e) {
       console.error("User history fetch error:", e);
@@ -588,10 +570,11 @@ export default function TheGrid() {
         publicClient.readContract({
           address: GRID_ADDR, abi: GRID_ABI, functionName: "rounds", args: [BigInt(prevRound)],
         }).then(rd => {
-          const players = Number(rd[3]);   // [3] = totalPlayers
-          const cell = Number(rd[4]);     // [4] = winningCell
-          const pot = rd[2].toString();
-          const isResolved = rd[5]; // V3: bool
+          // V2 tuple: [3]=winningCell [4]=resolved [6]=totalStaked [7]=totalStakers
+          const players = Number(rd[7]);
+          const cell = Number(rd[3]);
+          const pot = rd[6].toString();
+          const isResolved = rd[4];
           if (players > 0) {
             const result = {
               roundId: prevRound,
@@ -625,7 +608,8 @@ export default function TheGrid() {
       addFeed(`◆ Round ${round} started`);
       lastRoundRef.current = round;
       setSelectedCell(null);
-      setPlayerCell(-1);
+      setMyStakes(new Array(TOTAL_CELLS).fill(0n));
+      setCellTotals(new Array(TOTAL_CELLS).fill(0n));
       setClaimedCells(new Set());
       setCellCounts(new Array(TOTAL_CELLS).fill(0));
       setWinningCell(-1);
@@ -662,64 +646,46 @@ export default function TheGrid() {
     }
   }, [resolved, winningCell]);
 
-  // ─── One-Time USDG Approval ───
-  const approveUsdc = async () => {
-    if (!wallet || approving) return;
-    setApproving(true);
-    setError(null);
-    try {
-      const isEmbedded = wallet?.walletClientType === "privy";
-      const approvalAmt = isEmbedded ? "100" : "1000000";
-      addFeed(`Approving ${isEmbedded ? "100" : "1,000,000"} USDG...`);
-      const approveData = encodeFunctionData({
-        abi: USDC_ABI, functionName: "approve",
-        args: [GRID_ADDR, parseUnits(approvalAmt, 6)],
-      });
-      const receipt = await sendTransaction(
-        { to: USDC_ADDR, data: approveData, chainId: CHAIN_ID },
-        { sponsor: GAS_SPONSOR }
-      );
-      await publicClient.waitForTransactionReceipt({ hash: receipt.hash });
-      setUsdcApproved(true);
-      addFeed(`USDG approved ✓ — double-tap any cell to play!`);
-    } catch (e) {
-      const msg = e.shortMessage || e.message || "Approval failed";
-      setError(msg);
-      addFeed(`✗ Approval failed: ${msg.slice(0, 80)}`);
-    }
-    setApproving(false);
-  };
-
-  // ─── Pick Cell (via Privy embedded wallet) — direct pickCell, approval already done ───
-  const claimCell = async (cellIndex) => {
+  // ─── Stake ETH on a cell (native value, no approvals) ───
+  const stakeOnCell = async (cellIndex, amountWei) => {
     if (!wallet || claiming) return;
     setClaiming(true);
     setError(null);
-
     try {
-      // Encode the pickCell call
       const data = encodeFunctionData({
         abi: GRID_ABI,
-        functionName: "pickCell",
-        args: [cellIndex],
+        functionName: "stake",
+        args: [BigInt(round), [cellIndex], [amountWei]],
       });
-
-      // Send sponsored tx via Privy
       const receipt = await sendTransaction(
-        { to: GRID_ADDR, data, chainId: CHAIN_ID },
+        { to: GRID_ADDR, data, value: amountWei, chainId: CHAIN_ID },
         { sponsor: GAS_SPONSOR }
       );
-
-      addFeed(`◈ Claiming cell ${CELL_LABELS[cellIndex]}...`);
+      addFeed(`◈ Staking ${fmt(amountWei)} ETH on ${CELL_LABELS[cellIndex]}...`);
       await publicClient.waitForTransactionReceipt({ hash: receipt.hash });
-      addFeed(`✓ Cell ${CELL_LABELS[cellIndex]} claimed!`);
-      setPlayerCell(cellIndex);
+      addFeed(`✓ ${fmt(amountWei)} ETH on ${CELL_LABELS[cellIndex]}`);
       setSelectedCell(null);
       pollState();
     } catch (e) {
       const msg = e.shortMessage || e.message || "Transaction failed";
       setError(msg);
       addFeed(`✗ Failed: ${msg.slice(0, 80)}`);
+    }
+    setClaiming(false);
+  };
+
+  // ─── Claim escrowed winnings (only if a push transfer ever failed) ───
+  const claimEscrow = async () => {
+    if (!wallet || claiming) return;
+    setClaiming(true);
+    try {
+      const data = encodeFunctionData({ abi: GRID_ABI, functionName: "withdrawWinnings", args: [] });
+      const receipt = await sendTransaction({ to: GRID_ADDR, data, chainId: CHAIN_ID }, { sponsor: GAS_SPONSOR });
+      await publicClient.waitForTransactionReceipt({ hash: receipt.hash });
+      addFeed(`✓ Escrowed winnings claimed`);
+      pollState();
+    } catch (e) {
+      setError(e.shortMessage || e.message || "Claim failed");
     }
     setClaiming(false);
   };
@@ -737,7 +703,7 @@ export default function TheGrid() {
     }
   };
 
-  // ─── Withdraw USDG ───
+  // ─── Withdraw ETH ───
   const withdrawETH = async () => {
     if (!wallet || !withdrawAddr || !withdrawAmt || withdrawing) return;
     setWithdrawError("");
@@ -754,22 +720,15 @@ export default function TheGrid() {
     }
     setWithdrawing(true);
     try {
-      // ERC20 transfer for USDG
-      const transferData = encodeFunctionData({
-        abi: [{ name: "transfer", type: "function", stateMutability: "nonpayable",
-          inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }],
-          outputs: [{ type: "bool" }] }],
-        functionName: "transfer",
-        args: [withdrawAddr.trim(), parseUnits(withdrawAmt, 6)],
-      });
+      // native ETH transfer
       const receipt = await sendTransaction(
-        { to: USDC_ADDR, data: transferData, chainId: CHAIN_ID },
+        { to: withdrawAddr.trim(), value: parseEther(withdrawAmt), chainId: CHAIN_ID },
         { sponsor: GAS_SPONSOR }
       );
-      addFeed(`↗ Withdrawing ${withdrawAmt} USDG...`);
+      addFeed(`↗ Withdrawing ${withdrawAmt} ETH...`);
       await publicClient.waitForTransactionReceipt({ hash: receipt.hash });
-      addFeed(`✓ Withdrawn ${withdrawAmt} USDG`);
-      setWithdrawSuccess(`✓ Sent ${withdrawAmt} USDG · ${receipt.hash.slice(0,10)}...${receipt.hash.slice(-6)}`);
+      addFeed(`✓ Withdrawn ${withdrawAmt} ETH`);
+      setWithdrawSuccess(`✓ Sent ${withdrawAmt} ETH · ${receipt.hash.slice(0,10)}...${receipt.hash.slice(-6)}`);
       setWithdrawAddr("");
       setWithdrawAmt("");
       pollState();
@@ -796,27 +755,64 @@ export default function TheGrid() {
 
   const getCellState = (idx) => {
     if (resolved && winningCell === idx) return "winner";
-    if (playerCell === idx) return "yours";
+    if (myStakes[idx] > 0n) return "yours";
     if (claimedCells.has(idx)) return "claimed";
     return "empty";
   };
 
   const canClaim = (idx) => {
-    return !resolved && smoothTime > 0 && authenticated && playerCell < 0 && usdcApproved;
+    return !resolved && smoothTime > 0 && authenticated;
   };
 
-  // Expected payout (raw 6-dec) for a cell if it wins — after fee + tip,
-  // split among everyone on the cell (including your prospective entry)
-  const payoutFor = (idx) => {
+  // Parsed stake input (wei). Invalid/empty -> 0n.
+  const stakeWei = (() => {
+    try {
+      const v = parseEther(String(stakeAmount || "0"));
+      return v > 0n ? v : 0n;
+    } catch {
+      return 0n;
+    }
+  })();
+  const minStake = feeConfig.current.minStakeWei;
+
+  /**
+   * Expected ETH winnings if `idx` wins, MIRRORING GroodV2.getExpectedPayout:
+   *   pool  = totalStaked + add
+   *   fee   = pool * feeBps / 10000            (floor)
+   *   after = pool - fee
+   *   tip   = min(after, resolverTipWei)
+   *   dist  = after - tip
+   *   mine  = myStake[idx] + add
+   *   cellT = cellTotal[idx] + add
+   *   out   = dist * mine / cellT              (floor)
+   * All BigInt, floor division — identical to the contract's mulDiv.
+   */
+  const payoutFor = (idx, addWei = stakeWei) => {
     if (idx == null || idx < 0) return null;
-    const { feeBps, resolverReward } = feeConfig.current;
-    const joined = playerCell >= 0;
-    const pool = Number(potSize || 0) + (joined ? 0 : Number(CELL_COST_RAW));
-    const fee = Math.floor((pool * feeBps) / 10000);
-    const dist = Math.max(pool - fee - resolverReward, 0);
-    const winners = (cellCounts[idx] || 0) + (!joined ? 1 : 0);
-    return winners > 0 ? Math.floor(dist / winners) : dist;
+    const { feeBps, resolverTipWei } = feeConfig.current;
+    const add = addWei ?? 0n;
+    const pool = BigInt(potSize || 0) + add;
+    if (pool === 0n) return 0n;
+    const fee = (pool * feeBps) / 10000n;
+    const afterFee = pool - fee;
+    const tip = afterFee < resolverTipWei ? afterFee : resolverTipWei;
+    const dist = afterFee - tip;
+    const mine = (myStakes[idx] || 0n) + add;
+    const cellT = (cellTotals[idx] || 0n) + add;
+    if (cellT === 0n || mine === 0n) return 0n;
+    return (dist * mine) / cellT;
   };
+
+  /** Multiple of your stake you'd get back if this cell wins (e.g. 2.4x) */
+  const multipleFor = (idx, addWei = stakeWei) => {
+    const mine = (myStakes[idx] || 0n) + (addWei ?? 0n);
+    if (mine === 0n) return null;
+    const out = payoutFor(idx, addWei);
+    if (out == null) return null;
+    return Number((out * 1000n) / mine) / 1000;
+  };
+
+  const myTotalStaked = myStakes.reduce((a, b) => a + b, 0n);
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -844,7 +840,7 @@ export default function TheGrid() {
                 ● {fmtEth(gridBalance, 2)} <b style={{ color: "#009B04" }}>GROOD</b>
               </span>
               <span style={S.hStat} className="grid-header-stat">
-                ◆ {fmt(ethBalance, 2)} <b style={{ color: "#00C805" }}>USDG</b>
+                ◆ {fmt(ethBalance)} <b style={{ color: "#00C805" }}>ETH</b>
               </span>
             </>
           )}
@@ -854,7 +850,7 @@ export default function TheGrid() {
               display: "none", alignItems: "center", gap: 8,
               fontSize: 11, letterSpacing: 0.5,
             }}>
-              <span style={{ color: "#00C805" }}>{fmt(ethBalance, 2)} <b>USDG</b></span>
+              <span style={{ color: "#00C805" }}>{fmt(ethBalance)} <b>ETH</b></span>
               <span style={{ color: "#4a6e5a" }}>|</span>
               <span style={{ color: "#009B04" }}>{fmtEth(gridBalance, 2)} <b>GROOD</b></span>
             </span>
@@ -873,7 +869,7 @@ export default function TheGrid() {
                 </span>
                 {/* Mobile: balances + short address */}
                 <span className="wallet-addr-mobile" style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "nowrap" }}>
-                  <span style={{ fontSize: 10, color: "#00C805", fontWeight: 700 }}>{fmt(ethBalance, 2)}<span style={{ fontSize: 9, opacity: 0.7 }}> U</span></span>
+                  <span style={{ fontSize: 10, color: "#00C805", fontWeight: 700 }}>{fmt(ethBalance)}<span style={{ fontSize: 9, opacity: 0.7 }}> E</span></span>
                   <span style={{ color: "#2a4e3a", fontSize: 9 }}>|</span>
                   <span style={{ fontSize: 10, color: "#009B04", fontWeight: 700 }}>{fmtEth(gridBalance, 0)}<span style={{ fontSize: 9, opacity: 0.7 }}> G</span></span>
                   <span style={{ color: "#2a4e3a", fontSize: 9 }}>·</span>
@@ -929,7 +925,7 @@ export default function TheGrid() {
                               <span style={{ color: "#6a8e7b", fontSize: 10 }}>R#{h.roundId}</span>
                               <span style={{ color: "#4a6e5a", fontSize: 10 }}>{CELL_LABELS[h.cell] || "?"}</span>
                               <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 10, fontWeight: 600, color: isWin ? "#00C805" : "#FF5000", textAlign: "right" }}>
-                                {isWin ? "+" : "-"}{displayAmt.toFixed(2)} USDG
+                                {isWin ? "+" : "-"}{displayAmt.toFixed(5)} ETH
                               </span>
                             </div>
                           );
@@ -973,7 +969,7 @@ export default function TheGrid() {
                     padding: "12px 14px", borderBottom: "1px solid rgba(0,155,4,0.12)",
                     background: "rgba(0,155,4,0.04)",
                   }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#00C805", letterSpacing: 1.5 }}>↗ WITHDRAW USDG</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#00C805", letterSpacing: 1.5 }}>↗ WITHDRAW ETH</span>
                     <button onClick={() => { setWalletView("menu"); setWithdrawError(""); setWithdrawSuccess(""); }} style={{
                       fontSize: 10, color: "#6a8e7b", cursor: "pointer", background: "none",
                       border: "1px solid rgba(255,255,255,0.1)", padding: "4px 10px", borderRadius: 4,
@@ -983,7 +979,7 @@ export default function TheGrid() {
                   <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, padding: "0 2px" }}>
                       <span style={{ color: "#4a6e5a" }}>Available</span>
-                      <span style={{ color: "#00C805", fontWeight: 600, cursor: "pointer" }} onClick={() => setWithdrawAmt(fmt(ethBalance, 6))}>{fmt(ethBalance)} USDG (MAX)</span>
+                      <span style={{ color: "#00C805", fontWeight: 600, cursor: "pointer" }} onClick={() => setWithdrawAmt(fmt(ethBalance, 6))}>{fmt(ethBalance, 6)} ETH (MAX)</span>
                     </div>
                     <input
                       placeholder="Destination address (0x...)"
@@ -992,7 +988,7 @@ export default function TheGrid() {
                       style={{ ...S.dropdownInput, borderColor: withdrawError ? "rgba(255,80,0,0.4)" : "rgba(0,155,4,0.15)" }}
                     />
                     <input
-                      placeholder="Amount in USDG"
+                      placeholder="Amount in ETH"
                       value={withdrawAmt}
                       onChange={(e) => { setWithdrawAmt(e.target.value); setWithdrawError(""); setWithdrawSuccess(""); }}
                       style={S.dropdownInput}
@@ -1041,7 +1037,7 @@ export default function TheGrid() {
             <div style={S.mobileStatCell}><span style={S.statLabel}>TIME</span><span style={{ ...S.mobileStatValue, color: timerColor }}>{Math.floor(smoothTime)}s</span></div>
             <div style={S.mobileStatCell}><span style={S.statLabel}>POT</span><span style={{ ...S.mobileStatValue, color: "#00C805" }}>{fmt(potSize)}</span></div>
             <div style={S.mobileStatCell}><span style={S.statLabel}>PLAYERS</span><span style={S.mobileStatValue}>{activePlayers}</span></div>
-            <div style={S.mobileStatCell}><span style={S.statLabel}>YOURS</span><span style={S.mobileStatValue}>{playerCell >= 0 ? CELL_LABELS[playerCell] : "—"}</span></div>
+            <div style={S.mobileStatCell}><span style={S.statLabel}>YOURS</span><span style={S.mobileStatValue}>{fmt(myTotalStaked)}</span></div>
           </div>
 
           {/* Slim round progress */}
@@ -1114,9 +1110,9 @@ export default function TheGrid() {
                       if (!canClaim(idx)) return;
                       const now = Date.now();
                       const last = lastTapRef.current;
-                      if (last.cell === idx && now - last.time < 400 && !claiming) {
-                        // Double-tap/click — claim directly
-                        claimCell(idx);
+                      if (last.cell === idx && now - last.time < 400 && !claiming && stakeWei >= minStake) {
+                        // Double-tap/click — stake the selected amount directly
+                        stakeOnCell(idx, stakeWei);
                         lastTapRef.current = { cell: -1, time: 0 };
                       } else {
                         // First tap — select
@@ -1124,7 +1120,7 @@ export default function TheGrid() {
                         lastTapRef.current = { cell: idx, time: now };
                       }
                     }}
-                    onDoubleClick={() => { if (canClaim(idx) && !claiming) claimCell(idx); }}
+                    onDoubleClick={() => { if (canClaim(idx) && !claiming && stakeWei >= minStake) stakeOnCell(idx, stakeWei); }}
                   >
                     <span style={S.cellLabel}>{label}</span>
                     {count > 0 && state !== "winner" && state !== "yours" && (
@@ -1134,9 +1130,12 @@ export default function TheGrid() {
                       {state === "winner" ? (
                         <span style={{ fontSize: 26, animation: "winnerPop 0.6s ease-out" }}>★</span>
                       ) : state === "yours" ? (
-                        <span style={S.cellYouTag}>YOU{count > 1 ? ` +${count - 1}` : ""}</span>
+                        <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                          <span style={S.cellYouTag}>{fmt(myStakes[idx])}</span>
+                          <span style={{ fontSize: 8, color: "#7a9e8b" }}>of {fmt(cellTotals[idx])}</span>
+                        </span>
                       ) : count > 0 ? (
-                        <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 17, fontWeight: 700, color: "#d0e8dc" }}>{count}</span>
+                        <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 13, fontWeight: 700, color: "#d0e8dc" }}>{fmt(cellTotals[idx])}</span>
                       ) : (
                         <span style={{ fontSize: 11, opacity: 0.15 }}>◇</span>
                       )}
@@ -1154,22 +1153,28 @@ export default function TheGrid() {
           </div>
 
           {/* Mobile betting controls (desktop uses the side rail) */}
-          <div className="grid-mobile-controls" style={{ width: "100%", maxWidth: 620 }}>
-            {authenticated && allowanceChecked && !usdcApproved && !approving && (
-              <button style={{ ...S.claimBtn, marginTop: 12, background: "linear-gradient(135deg, #00C805, #009B04)" }} onClick={approveUsdc}>
-                APPROVE USDG TO PLAY
+          <div className="grid-mobile-controls" style={{ width: "100%", maxWidth: 620, marginTop: 12 }}>
+            <StakePicker
+              value={stakeAmount}
+              onChange={setStakeAmount}
+              minStake={minStake}
+              stakeWei={stakeWei}
+            />
+            {selectedCell != null && !claiming && authenticated && (
+              <button
+                style={{ ...S.claimBtn, marginTop: 10, opacity: stakeWei >= minStake ? 1 : 0.4 }}
+                disabled={stakeWei < minStake}
+                onClick={() => stakeOnCell(selectedCell, stakeWei)}
+              >
+                STAKE {stakeAmount} ETH ON {CELL_LABELS[selectedCell]}
+                {payoutFor(selectedCell) != null ? ` · WIN ${fmt(payoutFor(selectedCell))}` : ""}
               </button>
             )}
-            {approving && (
-              <div style={{ ...S.claimingBar, marginTop: 12 }}><div style={S.claimingDot} />APPROVING USDG...</div>
-            )}
-            {selectedCell !== null && !claiming && authenticated && usdcApproved && playerCell < 0 && (
-              <button style={{ ...S.claimBtn, marginTop: 12 }} onClick={() => claimCell(selectedCell)}>
-                ENTER {CELL_LABELS[selectedCell]} — {CELL_COST} USDG{payoutFor(selectedCell) != null ? ` · WIN ${fmt(payoutFor(selectedCell))}` : ""}
-              </button>
+            {!authenticated && (
+              <button style={{ ...S.claimBtn, marginTop: 10 }} onClick={login}>LOGIN TO PLAY</button>
             )}
             {claiming && (
-              <div style={{ ...S.claimingBar, marginTop: 12 }}><div style={S.claimingDot} />CONFIRMING TX...</div>
+              <div style={{ ...S.claimingBar, marginTop: 10 }}><div style={S.claimingDot} />CONFIRMING TX...</div>
             )}
           </div>
 
@@ -1231,7 +1236,7 @@ export default function TheGrid() {
                       <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 11, fontWeight: 600, color: "#d0e8dc" }}>#{h.roundId}</span>
                       <span style={{ fontSize: 11, color: "#8aae9b" }}>{CELL_LABELS[h.cell] || "?"}</span>
                       <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 10, color: "#00C805", fontWeight: 600, textAlign: "right" }}>
-                        {h.pot ? fmt(h.pot) : "—"}
+                        {h.pot ? fmt(h.pot, 5) : "—"}
                       </span>
                       <span style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 10, color: "#7a9e8b", textAlign: "right" }}>
                         {h.players || "—"}
@@ -1246,7 +1251,7 @@ export default function TheGrid() {
                         fontFamily: "'Orbitron', sans-serif", fontSize: 10, fontWeight: 600,
                         color: isWin ? "#00C805" : "#FF5000", textAlign: "right", whiteSpace: "nowrap",
                       }}>
-                        {isWin ? "+" : "-"}{displayAmt.toFixed(2)} USDG
+                        {isWin ? "+" : "-"}{displayAmt.toFixed(5)} ETH
                       </span>
                     </div>
                   );
@@ -1358,7 +1363,7 @@ export default function TheGrid() {
                         fontFamily: "'Orbitron', sans-serif", fontSize: 11, fontWeight: 600,
                         color: isLatest ? "#ffc800" : "#00C805",
                         animation: isLatest ? "pulse 1s ease-in-out infinite" : "none",
-                      }}>{fmt(r.pot)}</span>
+                      }}>{fmt(r.pot, 5)}</span>
                       <span style={{ textAlign: "right" }}>
                         {r.txHash ? (
                           <a
@@ -1451,7 +1456,7 @@ export default function TheGrid() {
             <div style={S.statCard}>
               <span style={S.statLabel}>POT</span>
               <span style={{ ...S.statValue, color: "#00C805" }}>
-                {fmt(potSize)}<span style={{ fontSize: 11, opacity: 0.7 }}> USDG</span>
+                {fmt(potSize, 5)}<span style={{ fontSize: 11, opacity: 0.7 }}> ETH</span>
               </span>
             </div>
           </div>
@@ -1461,17 +1466,24 @@ export default function TheGrid() {
               <span style={S.statValue}>{activePlayers}</span>
             </div>
             <div style={S.statCard}>
-              <span style={S.statLabel}>YOUR ENTRY</span>
-              <span style={S.statValue}>{playerCell >= 0 ? CELL_LABELS[playerCell] : "—"}</span>
-              <span style={S.statSub}>{playerCell >= 0 ? "1 USDG DEPOSITED" : "NOT ENTERED"}</span>
+              <span style={S.statLabel}>YOUR STAKE</span>
+              <span style={S.statValue}>{fmt(myTotalStaked)}</span>
+              <span style={S.statSub}>
+                {myTotalStaked > 0n
+                  ? `${myStakes.filter((v) => v > 0n).length} CELL${myStakes.filter((v) => v > 0n).length === 1 ? "" : "S"}`
+                  : "NOT ENTERED"}
+              </span>
             </div>
           </div>
 
           <div style={S.betPanel}>
             {(() => {
-              const focus = selectedCell != null ? selectedCell : (hoveredCell >= 0 ? hoveredCell : (playerCell >= 0 ? playerCell : null));
-              const pay = payoutFor(focus);
+              const focus = selectedCell != null ? selectedCell : (hoveredCell >= 0 ? hoveredCell : null);
+              const pay = focus != null ? payoutFor(focus) : null;
+              const mult = focus != null ? multipleFor(focus) : null;
               const nOn = focus != null ? (cellCounts[focus] || 0) : 0;
+              const cellPot = focus != null ? (cellTotals[focus] || 0n) : 0n;
+              const belowMin = stakeWei < minStake;
               return (
                 <>
                   <div style={S.betHead}>
@@ -1480,38 +1492,69 @@ export default function TheGrid() {
                     </span>
                     {focus != null && (
                       <span style={{ fontSize: 10, color: "#7a9e8b", letterSpacing: 0.5 }}>
-                        {nOn} PLAYER{nOn === 1 ? "" : "S"} ON IT
+                        {fmt(cellPot)} ETH · {nOn} STAKER{nOn === 1 ? "" : "S"}
                       </span>
                     )}
                   </div>
+
+                  <StakePicker
+                    value={stakeAmount}
+                    onChange={setStakeAmount}
+                    minStake={minStake}
+                    stakeWei={stakeWei}
+                  />
+
                   <div style={S.betRows}>
-                    <div style={S.betRow}><span>Entry</span><b style={{ color: "#e0f0e8" }}>1 USDG</b></div>
+                    <div style={S.betRow}>
+                      <span>Your stake</span>
+                      <b style={{ color: "#e0f0e8" }}>{stakeAmount || "0"} ETH</b>
+                    </div>
                     <div style={S.betRow}>
                       <span>Payout if it wins</span>
-                      <b style={{ color: "#00C805", fontFamily: "'Orbitron', sans-serif" }}>{pay != null ? `${fmt(pay)} USDG` : "—"}</b>
+                      <b style={{ color: "#00C805", fontFamily: "'Orbitron', sans-serif" }}>
+                        {pay != null ? `${fmt(pay)} ETH` : "—"}
+                      </b>
                     </div>
+                    {mult != null && focus != null && (
+                      <div style={S.betRow}>
+                        <span>Return multiple</span>
+                        <b style={{ color: mult >= 1 ? "#00C805" : "#FF5000", fontFamily: "'Orbitron', sans-serif" }}>
+                          {mult.toFixed(2)}×
+                        </b>
+                      </div>
+                    )}
                     <div style={S.betNote}>
-                      after {(feeConfig.current.feeBps / 100).toFixed(0)}% fee + {fmt(feeConfig.current.resolverReward, 1)} resolver tip, split among winners on the cell
+                      pro-rata: your share of the winning cell × (pot − {(Number(feeConfig.current.feeBps) / 100).toFixed(0)}% fee − resolver tip)
                     </div>
                   </div>
+
+                  {unclaimed > 0n && (
+                    <button style={{ ...S.betCta, background: "linear-gradient(135deg,#FFD700,#c8a400)", color: "#06140A" }} onClick={claimEscrow}>
+                      CLAIM {fmt(unclaimed)} ETH ESCROWED
+                    </button>
+                  )}
+
                   {!authenticated ? (
                     <button style={S.betCta} onClick={login}>LOGIN TO PLAY</button>
-                  ) : allowanceChecked && !usdcApproved ? (
-                    approving
-                      ? <div style={S.claimingBar}><div style={S.claimingDot} />APPROVING USDG...</div>
-                      : <button style={S.betCta} onClick={approveUsdc}>APPROVE USDG TO PLAY</button>
-                  ) : playerCell >= 0 ? (
-                    <div style={S.betLocked}>◈ ENTERED ON {CELL_LABELS[playerCell]} — GOOD LUCK</div>
                   ) : claiming ? (
                     <div style={S.claimingBar}><div style={S.claimingDot} />CONFIRMING TX...</div>
                   ) : smoothTime <= 0 ? (
                     <div style={S.betLocked}>RESOLVING…</div>
                   ) : selectedCell != null ? (
-                    <button style={S.betCta} onClick={() => claimCell(selectedCell)}>
-                      ENTER {CELL_LABELS[selectedCell]} — 1 USDG
+                    <button
+                      style={{ ...S.betCta, opacity: belowMin ? 0.4 : 1, cursor: belowMin ? "default" : "pointer" }}
+                      disabled={belowMin}
+                      onClick={() => stakeOnCell(selectedCell, stakeWei)}
+                    >
+                      {belowMin ? `MIN ${fmt(minStake)} ETH` : `STAKE ${stakeAmount} ETH ON ${CELL_LABELS[selectedCell]}`}
                     </button>
                   ) : (
                     <button style={{ ...S.betCta, opacity: 0.35, cursor: "default" }} disabled>SELECT A CELL</button>
+                  )}
+                  {myTotalStaked > 0n && (
+                    <div style={{ fontSize: 9.5, color: "#4a6e5a", textAlign: "center" }}>
+                      you can stake more cells or top up — no limit
+                    </div>
                   )}
                 </>
               );
@@ -1699,6 +1742,53 @@ export default function TheGrid() {
 // ═══════════════════════════════════════════════════════════════
 // SUB-COMPONENTS
 // ═══════════════════════════════════════════════════════════════
+
+function StakePicker({ value, onChange, minStake, stakeWei }) {
+  const belowMin = stakeWei > 0n && stakeWei < minStake;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      <div style={{ display: "flex", gap: 5 }}>
+        {STAKE_CHIPS.map((c) => {
+          const active = String(value) === c;
+          return (
+            <button
+              key={c}
+              onClick={() => onChange(c)}
+              style={{
+                flex: 1, padding: "7px 2px", borderRadius: 7, cursor: "pointer",
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700,
+                background: active ? "rgba(0,200,5,0.22)" : "rgba(0,200,5,0.05)",
+                border: active ? "1px solid #00C805" : "1px solid rgba(0,200,5,0.15)",
+                color: active ? "#fff" : "#7a9e8b",
+              }}
+            >
+              {c}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ position: "relative" }}>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))}
+          inputMode="decimal"
+          placeholder="custom amount"
+          style={{
+            width: "100%", padding: "10px 44px 10px 12px", borderRadius: 7,
+            background: "rgba(0,0,0,0.35)",
+            border: `1px solid ${belowMin ? "rgba(255,80,0,0.5)" : "rgba(0,200,5,0.18)"}`,
+            color: "#e0f0e8", fontFamily: "'Orbitron', sans-serif", fontSize: 15,
+            fontWeight: 700, outline: "none",
+          }}
+        />
+        <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#5a7e6a", pointerEvents: "none" }}>ETH</span>
+      </div>
+      {belowMin && (
+        <div style={{ fontSize: 9.5, color: "#FF5000" }}>minimum stake is {Number(minStake) / 1e18} ETH</div>
+      )}
+    </div>
+  );
+}
 
 function LogoIcon({ size = 28 }) {
   return (
