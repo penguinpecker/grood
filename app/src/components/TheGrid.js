@@ -422,7 +422,7 @@ export default function TheGrid() {
     setHistoryLoading(true);
     try {
       const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/gz_rounds?select=round_id,winning_cell,total_players,total_deposits,resolve_tx_hash,drand_round&total_players=gt.0&resolve_tx_hash=not.is.null&order=round_id.desc&limit=${limit}&offset=${offset}`,
+        `${SUPABASE_URL}/rest/v1/grood_rounds?select=round_id,winning_cell,total_staked_wei,total_stakers,resolve_tx_hash,drand_round&total_stakers=gt.0&order=round_id.desc&limit=${limit}&offset=${offset}`,
         { headers: { ...dbHeaders, Prefer: "count=exact" } }
       );
       const total = parseInt(r.headers.get("content-range")?.split("/")[1] || "0", 10);
@@ -431,8 +431,8 @@ export default function TheGrid() {
       const results = (data || []).map(r => ({
         roundId: r.round_id,
         cell: r.winning_cell,
-        players: r.total_players,
-        pot: r.total_deposits,
+        players: r.total_stakers,
+        pot: r.total_staked_wei,
         resolved: true,
         txHash: r.resolve_tx_hash,
         drandRound: r.drand_round || null,
@@ -485,36 +485,21 @@ export default function TheGrid() {
     try {
       const addr = address.toLowerCase();
       const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/gz_round_players?select=round_id,player_address,cell_picked,is_winner,pick_tx_hash,claimed,claim_tx_hash,gz_rounds!inner(winning_cell,total_players,total_deposits,resolve_tx_hash)&player_address=eq.${addr}&order=round_id.desc&limit=${limit}&offset=${offset}`,
+        `${SUPABASE_URL}/rest/v1/grood_stakes?select=round_id,player_address,cell,amount_wei,is_winner,payout_wei,pick_tx_hash&player_address=eq.${addr}&order=round_id.desc&limit=${limit}&offset=${offset}`,
         { headers: { ...dbHeaders, Prefer: "count=exact" } }
       );
       const total = parseInt(r.headers.get("content-range")?.split("/")[1] || "0", 10);
       userHistoryTotal.current = total;
       const data = await r.json();
 
-      // Count winners per round for accurate per-player payout
-      const wonRoundIds = (data || []).filter(h => h.is_winner).map(h => h.round_id);
-      let winnersMap = {};
-      if (wonRoundIds.length > 0) {
-        try {
-          const wr = await fetch(
-            `${SUPABASE_URL}/rest/v1/gz_round_players?select=round_id&is_winner=eq.true&round_id=in.(${wonRoundIds.join(",")})`,
-            { headers: dbHeaders }
-          );
-          const wData = await wr.json();
-          for (const w of (wData || [])) winnersMap[w.round_id] = (winnersMap[w.round_id] || 0) + 1;
-        } catch {}
-      }
-
       return (data || []).map(h => ({
         roundId: h.round_id,
-        cell: h.cell_picked,
+        cell: h.cell,
         won: h.is_winner,
         resolved: true,
-        pot: h.gz_rounds?.total_deposits || "0",
-        players: h.gz_rounds?.total_players || "—",
-        numWinners: winnersMap[h.round_id] || 1,
-        amountWei: h.amount_wei || "0",
+        stakedWei: h.amount_wei || "0",
+        // exact on-chain pro-rata payout, written by the keeper
+        amountWei: h.is_winner ? (h.payout_wei || "0") : (h.amount_wei || "0"),
       }));
     } catch (e) {
       console.error("User history fetch error:", e);

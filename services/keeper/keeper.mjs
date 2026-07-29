@@ -64,6 +64,7 @@ const ABI = parseAbi([
   "function skipEmptyRound(uint256 roundId)",
   "function repinRound(uint256 roundId)",
   "function getCellStakers(uint256 roundId, uint8 cell) view returns (address[])",
+  "function stakeOf(uint256 roundId, uint8 cell, address player) view returns (uint256)",
   "event Staked(uint256 indexed roundId, address indexed player, uint8 cell, uint256 amount, uint256 playerCellTotal, uint256 cellTotalAfter)",
   "event RoundResolved(uint256 indexed roundId, uint8 winningCell, uint256 winnersCount, bool isBonusRound)",
 ]);
@@ -180,12 +181,15 @@ publicClient.watchContractEvent({
         player: l.args.player,
         cell: Number(l.args.cell),
         amount: l.args.amount.toString(),
+        playerCellTotal: l.args.playerCellTotal.toString(),
+        cellTotalAfter: l.args.cellTotalAfter.toString(),
       });
-      sb("gz_round_players?on_conflict=round_id,player_address", "POST", {
+      // playerCellTotal is the running total, so upsert is idempotent on replay
+      sb("grood_stakes?on_conflict=round_id,player_address,cell", "POST", {
         round_id: Number(l.args.roundId),
         player_address: l.args.player.toLowerCase(),
-        cell_picked: Number(l.args.cell),
-        amount_wei: l.args.amount.toString(),
+        cell: Number(l.args.cell),
+        amount_wei: l.args.playerCellTotal.toString(),
         pick_tx_hash: l.transactionHash,
       });
     }
@@ -305,14 +309,15 @@ for (;;) {
     broadcast("round_resolved", payload);
     if (after[5]) broadcast("bonus_round", { roundId: Number(roundId) });
     // Column names match what the frontend reads (see schema.sql)
-    await sb("gz_rounds?on_conflict=round_id", "POST", {
+    await sb("grood_rounds?on_conflict=round_id", "POST", {
       round_id: Number(roundId),
       winning_cell: payload.winningCell,
-      total_players: Number(after[7]),
-      total_deposits: after[6].toString(),
-      is_bonus: after[5],
-      resolve_tx_hash: hash,
+      total_staked_wei: after[6].toString(),
+      total_stakers: Number(after[7]),
+      winner_total_wei: after[8].toString(),
+      distributable_wei: after[9].toString(),
       drand_round: Number(drandRound),
+      resolve_tx_hash: hash,
     });
     // Mark winners so user history shows won/lost correctly
     const winners = await publicClient.readContract({
@@ -321,12 +326,17 @@ for (;;) {
       functionName: "getCellStakers",
       args: [roundId, payload.winningCell],
     });
-    if (winners.length > 0) {
-      const list = winners.map((w) => `"${w.toLowerCase()}"`).join(",");
+    const winnerTotal = after[8], distributable = after[9];
+    for (const w of winners) {
+      const s = await publicClient.readContract({
+        address: GROOD_ADDRESS, abi: ABI, functionName: "stakeOf",
+        args: [roundId, payload.winningCell, w],
+      });
+      const payout = winnerTotal > 0n ? (distributable * s) / winnerTotal : 0n;
       await sb(
-        `gz_round_players?round_id=eq.${Number(roundId)}&player_address=in.(${list})`,
+        `grood_stakes?round_id=eq.${Number(roundId)}&player_address=eq.${w.toLowerCase()}&cell=eq.${payload.winningCell}`,
         "PATCH",
-        { is_winner: true }
+        { is_winner: true, payout_wei: payout.toString() }
       );
     }
   } catch (e) {
