@@ -13,11 +13,11 @@ async function main() {
     throw new Error("Mainnet upgrade requires CONFIRM_MAINNET=yes");
   }
 
-  const before = await ethers.getContractAt("GroodV2", proxy);
+  const before = await ethers.getContractAt("GroodV3", proxy);
   const state = {
     roundId: await before.currentRoundId(),
     fees: await before.accumulatedFees(),
-    reserve: await before.bonusReserve(),
+    reserve: await before.bonusReserve_retired(),
     owner: await before.owner(),
   };
   console.log(`proxy ${proxy}`);
@@ -25,7 +25,7 @@ async function main() {
   console.log(`  signer: ${signer.address}`);
 
   const V3 = await ethers.getContractFactory("GroodV4");
-  const v3 = await upgrades.upgradeProxy(proxy, V3, { call: { fn: "initializeV3", args: [] } });
+  const v3 = await upgrades.upgradeProxy(proxy, V3, {});
   await v3.waitForDeployment();
   const impl = await upgrades.erc1967.getImplementationAddress(proxy);
   console.log(`  upgraded. new impl: ${impl}`);
@@ -41,7 +41,7 @@ async function main() {
   const ok = [
     ["round preserved", after.roundId >= state.roundId],
     ["owner preserved", after.owner === state.owner],
-    ["reserve folded into fees", after.reserve === 0n && after.fees === state.fees + state.reserve],
+    ["fees preserved", after.fees >= state.fees],
     ["no bonus surface", v3.interface.getFunction("depositBonusReserve" as any) === null],
   ] as [string, boolean][];
   let allOk = true;
@@ -49,7 +49,7 @@ async function main() {
   if (!allOk) throw new Error("post-upgrade checks FAILED");
 
   dep.groodImpl = impl;
-  dep.version = "V3";
+  dep.version = "V4";
   dep.upgradedAt = new Date().toISOString();
   fs.writeFileSync(file, JSON.stringify(dep, null, 2));
   console.log(`\nWrote ${file}`);

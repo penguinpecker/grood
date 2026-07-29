@@ -230,11 +230,11 @@ export default function HomePage() {
         </div>
         <div className="two-col-grid">
           <MechCard title="PAYOUT MATH">
-            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>Every stake goes into the pot. A 5% protocol fee and a small resolver tip are deducted, then the rest goes to stakers on the winning cell — split pro-rata to how much each staked.</p>
+            <p style={{fontSize:11,color:"#7a9e8b",lineHeight:1.75,margin:0}}>Every stake goes into the pot. A 5% protocol fee is deducted — that is the only cut — and the remaining 95% goes to stakers on the winning cell, split pro-rata to how much each staked. The resolver tip is paid out of the fee, never on top of it.</p>
             <div style={{background:"rgba(0,0,0,0.3)",border:"1px solid rgba(0,155,4,0.1)",borderRadius:6,padding:"10px 12px",fontSize:11,color:"#4a6e5a",lineHeight:1.9}}>
               pool = <b style={{color:"#00C805"}}>sum of all stakes</b><br/>
               fee = pool × <b style={{color:"#00C805"}}>5%</b><br/>
-              prize = pool − fee − <b style={{color:"#00C805"}}>resolver tip</b><br/>
+              prize = pool − fee  <b style={{color:"#00C805"}}>(= 95% of pot)</b><br/>
               your cut = prize × <b style={{color:"#00C805"}}>your stake ÷ cell total</b>
             </div>
           </MechCard>

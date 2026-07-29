@@ -759,9 +759,7 @@ export default function TheGrid() {
    * Expected ETH winnings if `idx` wins, MIRRORING GroodV2.getExpectedPayout:
    *   pool  = totalStaked + add
    *   fee   = pool * feeBps / 10000            (floor)
-   *   after = pool - fee
-   *   tip   = min(after, resolverTipWei)
-   *   dist  = after - tip
+   *   dist  = pool - fee                       (tip comes out of the fee)
    *   mine  = myStake[idx] + add
    *   cellT = cellTotal[idx] + add
    *   out   = dist * mine / cellT              (floor)
@@ -769,15 +767,14 @@ export default function TheGrid() {
    */
   const payoutFor = (idx, addWei = stakeWei) => {
     if (idx == null || idx < 0) return null;
-    const { feeBps, resolverTipWei } = feeConfig.current;
+    const { feeBps } = feeConfig.current;
     const add = addWei ?? 0n;
     const pool = BigInt(potSize || 0) + add;
     if (pool === 0n) return 0n;
+    // mirrors GroodV4: the resolver tip is paid OUT OF the fee, so players
+    // receive exactly (1 - feeBps) of the pot
     const fee = (pool * feeBps) / 10000n;
-    const afterFee = pool - fee;
-    const tipCap = afterFee / 10n;                       // mirrors GroodV2
-    const tip = resolverTipWei < tipCap ? resolverTipWei : tipCap;
-    const dist = afterFee - tip;
+    const dist = pool - fee;
     const mine = (myStakes[idx] || 0n) + add;
     const cellT = (cellTotals[idx] || 0n) + add;
     if (cellT === 0n || mine === 0n) return 0n;
@@ -1489,7 +1486,7 @@ export default function TheGrid() {
                       </div>
                     )}
                     <div style={S.betNote}>
-                      pro-rata: your share of the winning cell × (pot − {(Number(feeConfig.current.feeBps) / 100).toFixed(0)}% fee − resolver tip)
+                      pro-rata: your share of the winning cell × (pot − {(Number(feeConfig.current.feeBps) / 100).toFixed(0)}% fee). {(100 - Number(feeConfig.current.feeBps) / 100).toFixed(0)}% of every pot goes to players.
                     </div>
                   </div>
 
