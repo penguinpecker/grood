@@ -1,0 +1,25 @@
+{
+  "network": "robinhood-testnet",
+  "chainId": 46630,
+  "deployedAt": "2026-07-29T07:28:32.368Z",
+  "deployer": "0x52c59BC217fD0C0b2157f1B2Da1a12635E19Da4c",
+  "feeRecipient": "0x52c59BC217fD0C0b2157f1B2Da1a12635E19Da4c",
+  "drandBeacon": "0x55aE706B727bb00938cC09651d6e11232A9FEd38",
+  "groodToken": "0xfc15d77179CD6c1223E0594F2f1d3F595A686fdE",
+  "groodTokenImpl": "0x2e01161c12515307c50Ccc26cB90F0b1Bb6B6982",
+  "grood": "0x7eDC7E0e270cD506Fbe12C9e8FA087C4090fA212",
+  "groodImpl": "0xE32Ef72344c1aA3A3eD2b6F666017C3Bc1a38928",
+  "params": {
+    "minStakeWei": "100000000000000",
+    "resolverTipWei": "30000000000000",
+    "protocolFeeBps": "500",
+    "roundDuration": "30",
+    "beaconGap": "2"
+  },
+  "drand": {
+    "network": "evmnet",
+    "chainHash": "04f1e9062b8a81f848fded9c12306733282b2727ecced50032187751166ec8c3",
+    "genesis": 1727521075,
+    "period": 3
+  }
+}

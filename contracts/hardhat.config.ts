@@ -1,5 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "@openzeppelin/hardhat-upgrades";
 import "dotenv/config";
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
@@ -14,9 +15,10 @@ const config: HardhatUserConfig = {
     artifacts: "./artifacts",
   },
   solidity: {
-    version: "0.8.24",
+    version: "0.8.28",
     settings: {
       viaIR: true,
+      evmVersion: "cancun",
       optimizer: {
         enabled: true,
         runs: 200,

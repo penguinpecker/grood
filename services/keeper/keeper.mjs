@@ -59,12 +59,12 @@ export const robinhoodChain = defineChain({
 
 const ABI = parseAbi([
   "function currentRoundId() view returns (uint256)",
-  "function rounds(uint256) view returns (uint64 startTime, uint64 endTime, uint256 totalDeposits, uint256 totalPlayers, uint8 winningCell, bool resolved, bool isBonusRound, uint64 drandRound)",
+  "function rounds(uint256) view returns (uint64 startTime, uint64 endTime, uint64 drandRound, uint8 winningCell, bool resolved, bool isBonusRound, uint256 totalStaked, uint256 totalStakers, uint256 winnerTotal, uint256 distributable, uint256 groodBase)",
   "function resolveRound(uint256 roundId, uint256[2] signature)",
   "function skipEmptyRound(uint256 roundId)",
   "function repinRound(uint256 roundId)",
-  "function getCellPlayers(uint256 roundId, uint8 cell) view returns (address[])",
-  "event CellPicked(uint256 indexed roundId, address indexed player, uint8 cell)",
+  "function getCellStakers(uint256 roundId, uint8 cell) view returns (address[])",
+  "event Staked(uint256 indexed roundId, address indexed player, uint8 cell, uint256 amount, uint256 playerCellTotal, uint256 cellTotalAfter)",
   "event RoundResolved(uint256 indexed roundId, uint8 winningCell, uint256 winnersCount, bool isBonusRound)",
 ]);
 
@@ -172,18 +172,20 @@ async function sb(path, method, body, extraPrefer = "") {
 publicClient.watchContractEvent({
   address: GROOD_ADDRESS,
   abi: ABI,
-  eventName: "CellPicked",
+  eventName: "Staked",
   onLogs: (logs) => {
     for (const l of logs) {
       broadcast("cell_picked", {
         roundId: Number(l.args.roundId),
         player: l.args.player,
         cell: Number(l.args.cell),
+        amount: l.args.amount.toString(),
       });
       sb("gz_round_players?on_conflict=round_id,player_address", "POST", {
         round_id: Number(l.args.roundId),
         player_address: l.args.player.toLowerCase(),
         cell_picked: Number(l.args.cell),
+        amount_wei: l.args.amount.toString(),
         pick_tx_hash: l.transactionHash,
       });
     }
@@ -198,7 +200,7 @@ async function stageTx() {
     publicClient.getTransactionCount({ address: account.address }),
     publicClient.estimateFeesPerGas(),
   ]);
-  return { nonce, ...fees, gas: 2_000_000n };
+  return { nonce, ...fees, gas: 12_000_000n };
 }
 
 async function sendResolve(fn, roundId, args, staged) {
@@ -243,7 +245,7 @@ for (;;) {
       functionName: "rounds",
       args: [roundId],
     });
-    const [, endTime, , totalPlayers, , resolved, , drandRound] = round;
+    const [, endTime, drandRound, , resolved, , , totalStakers] = round;
 
     lastKnownRoundId = Number(roundId);
     const now = Math.floor(Date.now() / 1000);
@@ -256,7 +258,7 @@ for (;;) {
       continue;
     }
 
-    if (totalPlayers === 0n) {
+    if (totalStakers === 0n) {
       const hash = await sendResolve("skipEmptyRound", roundId, [roundId]);
       log(`round ${roundId} empty — skipped (${hash})`);
       broadcast("round_resolved", { roundId: Number(roundId), skipped: true, txHash: hash });
@@ -294,21 +296,21 @@ for (;;) {
     const payload = {
       roundId: Number(roundId),
       skipped: false,
-      winningCell: Number(after[4]),
-      players: Number(after[3]),
+      winningCell: Number(after[3]),
+      players: Number(after[7]),
       txHash: hash,
       drandRound: Number(drandRound),
     };
-    log(`round ${roundId} resolved → cell ${payload.winningCell}${after[6] ? " MOTHERLODE" : ""} (${hash})`);
+    log(`round ${roundId} resolved → cell ${payload.winningCell}${after[5] ? " MOTHERLODE" : ""} (${hash})`);
     broadcast("round_resolved", payload);
-    if (after[6]) broadcast("bonus_round", { roundId: Number(roundId) });
+    if (after[5]) broadcast("bonus_round", { roundId: Number(roundId) });
     // Column names match what the frontend reads (see schema.sql)
     await sb("gz_rounds?on_conflict=round_id", "POST", {
       round_id: Number(roundId),
       winning_cell: payload.winningCell,
-      total_players: Number(after[3]),
-      total_deposits: after[2].toString(),
-      is_bonus: after[6],
+      total_players: Number(after[7]),
+      total_deposits: after[6].toString(),
+      is_bonus: after[5],
       resolve_tx_hash: hash,
       drand_round: Number(drandRound),
     });
@@ -316,7 +318,7 @@ for (;;) {
     const winners = await publicClient.readContract({
       address: GROOD_ADDRESS,
       abi: ABI,
-      functionName: "getCellPlayers",
+      functionName: "getCellStakers",
       args: [roundId, payload.winningCell],
     });
     if (winners.length > 0) {
