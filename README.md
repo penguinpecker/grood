@@ -1,94 +1,172 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/Chain-Robinhood_Chain-00C805?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Entry-1_USDG-2775CA?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Randomness-drand_evmnet-8A2BE2?style=for-the-badge" />
-</p>
-
 <h1 align="center">◇ ◈ G R O O D ◈ ◇</h1>
 
 <p align="center">
-  <code>DISTRIBUTED RANDOMNESS · FULL DEGEN</code>
+  <strong>A provably fair grid game on Robinhood Chain.</strong><br/>
+  Stake ETH on a 5×5 grid. A distributed randomness beacon picks the winning
+  cell. Winners split the pot in proportion to what they staked.
 </p>
 
 <p align="center">
-  A provably fair 5×5 grid game on <strong>Robinhood Chain</strong>.<br/>
-  Pick a cell. Hope the beacon picks the same one.<br/>
-  Winner takes the pot. Every <strong>30 seconds</strong>. Forever.
+  <a href="https://grood-five.vercel.app"><strong>▶ Play</strong></a> &nbsp;·&nbsp;
+  <a href="https://robinhoodchain.blockscout.com/address/0xfd5160C3D0F5F022118aDbBEb386E1B67CD13274"><strong>◆ Contract</strong></a> &nbsp;·&nbsp;
+  <a href="https://drand.love"><strong>⬡ drand</strong></a>
 </p>
 
 ---
 
-## WTF is Grood?
+## How it works
 
-Grood is an onchain lottery that runs every **30 seconds** on **Robinhood Chain** (chain 4663).
+Every **30 seconds** a round opens. You stake any amount of ETH — from
+0.0001 upward — on any cells you like. When the round closes, one cell wins
+and everyone on it splits the pot.
 
-There's a 5×5 grid. You pick a cell. You pay **1 USDG**. When the round ends, the winning cell is chosen by a **drand randomness beacon** — produced by the League of Entropy's distributed network and **BLS-verified by the game contract itself** on-chain. If you're standing on the winning cell — **you take the pot**.
+Two rules define the whole game:
 
-The key trick: when a round starts, the contract pins the number of a **future** drand beacon — one that will only be emitted *after* betting closes. Nobody (not the resolver, not the deployer, not drand) can know or influence the outcome while entries are open, and the beacon's unique BLS signature is the only input the contract will accept.
+1. **A cell wins with probability equal to its share of the pot.** Put in a
+   quarter of the round's ETH and you have a one-in-four chance.
+2. **The prize splits by stake.** Hold 25% of the winning cell, take 25% of
+   the prize.
 
-> **This isn't trust-me-bro gambling. This isn't even trust-the-prover gambling. The randomness verifies itself on-chain.**
-
-## 🕹️ How it works
-
-| Step | What Happens |
-|:----:|:-------------|
-| **01** | **◉ Round Opens** — a new 30-second round begins; the contract pins the drand round emitted after `endTime` |
-| **02** | **◇ Pick Your Cell** — any cell on the 5×5 grid, **1 USDG**. One entry per address. Multiple players can share a cell |
-| **03** | **◈ Watch the Heatmap** — see where everyone's betting in real time. Crowded cells split the pot |
-| **04** | **⬡ Beacon Resolves** — drand emits the pinned beacon; **anyone** submits its signature to `resolveRound()`, the contract verifies the BLS signature (BN254 pairing) and derives the winner from **occupied cells only** |
-| **05** | **◆ Auto-Pay** — winners receive USDG + **$GROOD** in the same transaction. No claim step. The resolver earns 0.1 USDG |
-
-**Motherlode:** 1 in 100 rounds (derived from a second hash of the same beacon) pays **10× USDG** and **10× $GROOD**.
-
-**Payouts:** pool minus 5% protocol fee minus 0.1 USDG resolver reward, split among winners on the winning cell. A winner is guaranteed every round — the beacon draws from occupied cells only.
-
-**Backstop:** if a round somehow sits unresolved for 30 days (drand beacons are unchained and resolvable forever, so this means drand itself died), anyone can void the round and every player reclaims their entry.
-
-## 🏗️ Architecture
+Together these mean every wei has the same expected value wherever you put
+it — there is no cell that is secretly a better bet, and no way to seed dust
+across the board to shade someone else's odds. The house takes 5%, and a
+small tip pays whoever submits the randomness.
 
 ```
-  PLAYER ── pickCell(1 USDG) ──▶ GROOD CONTRACT ── mint ──▶ $GROOD TOKEN
-                                   │  ▲
-                    verifies BLS   │  │ resolveRound(roundId, signature)
-                    sig on-chain   │  │      (permissionless)
-                                   ▼  │
-                              DRAND BEACON ◀── fetch public sig ── KEEPER BOT
-                              (evmnet, BN254)                      (optional!)
+prize   = pot − 5% fee − resolver tip
+your cut = prize × (your stake on the winning cell ÷ that cell's total)
 ```
 
-| Layer | Tech |
-|:------|:-----|
-| **Chain** | Robinhood Chain mainnet (4663, Arbitrum Nitro) · testnet 46630 |
-| **Entry currency** | USDG (Paxos Global Dollar), 6 decimals — `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
-| **Randomness** | drand **evmnet** (`bls-bn254-unchained-on-g1`, 3s period), verified on-chain via BN254 pairing precompile (~500k gas incl. verification) |
-| **Contracts** | `contracts/src/Grood.sol` + `DrandBeacon.sol` + vendored `BLS.sol`/`ModExp.sol` (kevincharm/bls-bn254, MIT) |
-| **Keeper** | `services/keeper/` — fetches beacons, resolves rounds, serves the SSE feed. Trustless and optional: anyone can resolve |
-| **Frontend** | Next.js + wagmi/viem + Privy, `app/` |
-| **Explorer** | [robinhoodchain.blockscout.com](https://robinhoodchain.blockscout.com) |
+Winners are paid **automatically** in the resolution transaction. There is no
+claim step and no reward token — the pot is the whole game.
 
-## 🚀 Deploy
+## Why the randomness can't be gamed
+
+Grood uses [**drand**](https://drand.love) — a randomness beacon produced
+every 3 seconds by the League of Entropy, a distributed group of independent
+operators. No single participant can predict or withhold a beacon.
+
+The important part is the timing. When a round opens, the contract writes down
+the *number* of a beacon that **does not exist yet** and will only be
+published about 10 seconds after betting closes. So while you're placing
+stakes, the answer is not merely secret — it hasn't been created.
+
+When that beacon appears, **anyone** can submit it. The contract verifies its
+BLS signature itself, on-chain, against drand's public key. Each beacon round
+has exactly one valid signature, so whoever submits it has no influence
+whatsoever: they cannot grind alternatives, cannot choose a favourable one,
+and cannot censor it, because anybody else can submit the identical bytes and
+collect the tip.
+
+Round end to winners paid: **about 3 seconds**, measured on-chain.
+
+## Deployed contracts
+
+Robinhood Chain mainnet (`4663`). All implementations are verified —
+bytecode-identical to this source.
+
+| Contract | Address |
+|:---|:---|
+| **Grood** (UUPS proxy) | [`0xfd5160C3D0F5F022118aDbBEb386E1B67CD13274`](https://robinhoodchain.blockscout.com/address/0xfd5160C3D0F5F022118aDbBEb386E1B67CD13274) |
+| ↳ implementation | [`0x0D88848C3193024FD0E0e972F6D6b6898818f81A`](https://repo.sourcify.dev/4663/0x0D88848C3193024FD0E0e972F6D6b6898818f81A) |
+| **DrandBeacon** (verifier) | [`0x73d7D306F5AE49a60c70C8Cf0331F1DA65E6cD2A`](https://robinhoodchain.blockscout.com/address/0x73d7D306F5AE49a60c70C8Cf0331F1DA65E6cD2A) |
+
+The game sits behind a UUPS proxy, so fixes and improvements ship to the same
+address without asking anyone to migrate.
+
+## Parameters
+
+| | Value | |
+|:---|:---|:---|
+| Round length | 30 s | owner-tunable, 10 s – 1 h |
+| Beacon gap | 10 s | safety margin before the beacon exists; floor 8 s |
+| Minimum stake | 0.0001 ETH | per *new* position; top-ups can be any size |
+| Maximum stake | none | capital buys share, not better odds |
+| Protocol fee | 5% | capped at 20% |
+| Resolver tip | 0.00003 ETH | also capped at 10% of the pot |
+| Stakers per cell | 100 | bounds the auto-pay loop; top-ups are free |
+
+## Safety
+
+The contract has been through two adversarial review passes. Highlights of
+what's in place:
+
+- **Solvency is an invariant.** Contract balance always covers the live
+  round's stakes, outstanding refunds, escrowed winnings and unclaimed fees.
+  Rounding dust is banked into fees so no wei is ever untracked.
+- **The owner cannot touch player money.** `sweepSurplus` can only remove
+  funds owed to nobody. `renounceOwnership` is disabled, since one accidental
+  call would strand fees and destroy every recovery path.
+- **Payment can't be blocked.** Winner transfers are gas-capped; a contract
+  that rejects ETH gets its winnings escrowed and can pull them later, so one
+  hostile receiver can't stall resolution.
+- **Liveness has two backstops.** If drand misses a beacon, the owner may
+  re-pin the round to a later one after 6 hours — deliberately owner-gated,
+  because a permissionless re-pin would let a loser re-roll a published
+  result. If the beacon never arrives, anyone can void the round after 30
+  days (plus a 3-day grace) and every player reclaims exactly what they
+  staked.
+
+## Repository layout
+
+```
+contracts/
+  src/
+    GroodV3.sol            the live game
+    drand/DrandBeacon.sol  on-chain BLS verification of drand beacons
+    drand/BLS.sol          BN254 pairing helpers (kevincharm/bls-bn254, MIT)
+  test/                    22 tests, using real drand signatures as fixtures
+  scripts/                 deploy, upgrade, verification and smoke-test scripts
+  legacy/                  original GridZero contracts, kept for provenance
+services/keeper/           fetches beacons, resolves rounds, serves the live feed
+app/                       Next.js frontend
+```
+
+## Running it
+
+**Tests** — these verify real drand beacon signatures on a local EVM, so they
+prove the cryptography, not a mock:
 
 ```bash
-cd contracts
-npm install
-npx hardhat test                                  # includes REAL drand beacon signatures as fixtures
-npx hardhat run scripts/probe-robinhood-precompiles.ts   # proves chain 4663 verifies drand beacons
-PRIVATE_KEY=0x... npx hardhat run scripts/deploy-grood.ts --network robinhood-testnet
-PRIVATE_KEY=0x... npx hardhat run scripts/deploy-grood.ts --network robinhood
+cd contracts && npm install && npx hardhat test
 ```
 
-Then set the deployed addresses in `app/.env.example` → `.env.local`, and run the keeper:
+**Deploy** (testnet first; mainnet requires an explicit confirmation flag and
+runs post-deploy assertions before it will report success):
 
 ```bash
-cd services/keeper
-PRIVATE_KEY=0x... GROOD_ADDRESS=0x... npm start
+PRIVATE_KEY=0x… npx hardhat run scripts/deploy-grood-v2.ts --network robinhood-testnet
+PRIVATE_KEY=0x… CONFIRM_MAINNET=yes npx hardhat run scripts/deploy-grood-v2.ts --network robinhood
 ```
 
-## 📜 Lineage
+**Keeper** — resolves rounds and serves the live event feed. It holds no
+special power: resolution is permissionless, so anyone can run one, and the
+tip makes it self-funding.
 
-Grood is a fork of [GridZero](https://github.com/penguinpecker/gridzero) (Base + Groth16/zkVerify). The zk-VRF stack was replaced with drand beacons verified directly on-chain — strictly stronger trust assumptions, dramatically less infrastructure. Legacy GridZero contracts (V1–V4), the circom/ezkl/risc0 zk stack, and the old services remain in-tree for reference and are not part of the build.
+```bash
+cd services/keeper && npm install
+PRIVATE_KEY=0x… GROOD_ADDRESS=0xfd51… CHAIN_ID=4663 \
+  RPC_URL=https://rpc.mainnet.chain.robinhood.com npm start
+```
+
+**Frontend**:
+
+```bash
+cd app && npm install && cp .env.example .env.local   # then fill it in
+npm run dev
+```
+
+## Lineage
+
+Grood began as a fork of [GridZero](https://github.com/penguinpecker/gridzero),
+which ran on Base and advertised Groth16 zero-knowledge proofs. In practice its
+contract accepted an unverified random number from a single trusted server — the
+proofs constrained nothing on-chain. Grood replaced that with drand beacons the
+contract verifies itself, which is both a stronger guarantee and far less
+machinery. The original contracts are preserved under `contracts/legacy/`.
+
+---
 
 <p align="center">
-  <strong>◇ ◈ DISTRIBUTED RANDOMNESS · FULL DEGEN ◈ ◇</strong><br/>
-  <sub>Built with BLS pairings, bad decisions, and USDG you probably shouldn't be gambling.</sub>
+  <sub>Verifiable randomness, pro-rata payouts, and ETH you probably shouldn't be gambling.</sub>
 </p>
