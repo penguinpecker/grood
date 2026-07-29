@@ -57,6 +57,26 @@ const GRID_ABI = [
     inputs: [{ name: "player", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
   { name: "withdrawWinnings", type: "function", stateMutability: "nonpayable",
     inputs: [], outputs: [] },
+  { name: "RoundResolved", type: "event", inputs: [
+    { name: "roundId", type: "uint256", indexed: true },
+    { name: "winningCell", type: "uint8" },
+    { name: "winnersCount", type: "uint256" },
+    { name: "winnerTotal", type: "uint256" },
+    { name: "distributable", type: "uint256" },
+  ] },
+  { name: "Staked", type: "event", inputs: [
+    { name: "roundId", type: "uint256", indexed: true },
+    { name: "player", type: "address", indexed: true },
+    { name: "cell", type: "uint8" },
+    { name: "amount", type: "uint256" },
+    { name: "playerCellTotal", type: "uint256" },
+    { name: "cellTotalAfter", type: "uint256" },
+  ] },
+  { name: "WinningsPaid", type: "event", inputs: [
+    { name: "roundId", type: "uint256", indexed: true },
+    { name: "player", type: "address", indexed: true },
+    { name: "ethAmount", type: "uint256" },
+  ] },
 ];
 
 // Quick-stake chips (ETH). Manual entry allowed down to MIN_STAKE.
@@ -179,6 +199,7 @@ export default function TheGrid() {
 
   // ─── Refresh top of history table (picks up TX hash + drand round after resolution) ───
   const refreshHistoryTop = () => {
+    chainHistory.current = null;   // force a re-read from chain
     fetchRoundHistory(0, HISTORY_PAGE_SIZE).then(fresh => {
       if (!fresh.length) return;
       setRoundHistory(prev => {
@@ -415,36 +436,55 @@ export default function TheGrid() {
   const historyOffset = useRef(0);
   const historyTotal = useRef(0);
 
+  // Round history read straight from chain logs — trustless, and needs no
+  // database or credentials. The RPC serves the full range in one call.
+  const chainHistory = useRef(null);
+
+  const loadChainHistory = async () => {
+    if (chainHistory.current) return chainHistory.current;
+    const logs = await publicClient.getContractEvents({
+      address: GRID_ADDR, abi: GRID_ABI, eventName: "RoundResolved",
+      fromBlock: 0n, toBlock: "latest",
+    });
+    const rows = await Promise.all(
+      logs.slice().reverse().map(async (l) => {
+        let pot = 0n, drandRound = null;
+        try {
+          const rd = await publicClient.readContract({
+            address: GRID_ADDR, abi: GRID_ABI, functionName: "rounds", args: [l.args.roundId],
+          });
+          pot = rd[6];
+          drandRound = Number(rd[2]);
+        } catch {}
+        return {
+          roundId: Number(l.args.roundId),
+          cell: Number(l.args.winningCell),
+          players: Number(l.args.winnersCount),
+          pot: pot.toString(),
+          resolved: true,
+          txHash: l.transactionHash,
+          drandRound,
+        };
+      })
+    );
+    chainHistory.current = rows;
+    historyFullyLoadedRef.current = true;
+    setHistoryFullyLoaded(true);
+    return rows;
+  };
+
   const fetchRoundHistory = async (offset, limit = HISTORY_PAGE_SIZE) => {
-    if (!SUPABASE_URL) return [];
     if (historyLoadingRef.current) return [];
     historyLoadingRef.current = true;
     setHistoryLoading(true);
     try {
-      const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/grood_rounds?select=round_id,winning_cell,total_staked_wei,total_stakers,resolve_tx_hash,drand_round&total_stakers=gt.0&order=round_id.desc&limit=${limit}&offset=${offset}`,
-        { headers: { ...dbHeaders, Prefer: "count=exact" } }
-      );
-      const total = parseInt(r.headers.get("content-range")?.split("/")[1] || "0", 10);
-      historyTotal.current = total;
-      const data = await r.json();
-      const results = (data || []).map(r => ({
-        roundId: r.round_id,
-        cell: r.winning_cell,
-        players: r.total_stakers,
-        pot: r.total_staked_wei,
-        resolved: true,
-        txHash: r.resolve_tx_hash,
-        drandRound: r.drand_round || null,
-      }));
-      historyOffset.current = offset + results.length;
-      if (historyOffset.current >= historyTotal.current) {
-        historyFullyLoadedRef.current = true;
-        setHistoryFullyLoaded(true);
-      }
-      return results;
+      const all = await loadChainHistory();
+      historyTotal.current = all.length;
+      const page = all.slice(offset, offset + limit);
+      historyOffset.current = offset + page.length;
+      return page;
     } catch (e) {
-      console.error("History fetch error:", e);
+      console.error("chain history error:", e);
       return [];
     } finally {
       historyLoadingRef.current = false;
@@ -481,28 +521,49 @@ export default function TheGrid() {
   const userHistoryTotal = useRef(0);
 
   const fetchUserHistory = async (offset, limit = 10) => {
-    if (!address || !SUPABASE_URL) return [];
+    if (!address) return [];
     try {
-      const addr = address.toLowerCase();
-      const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/grood_stakes?select=round_id,player_address,cell,amount_wei,is_winner,payout_wei,pick_tx_hash&player_address=eq.${addr}&order=round_id.desc&limit=${limit}&offset=${offset}`,
-        { headers: { ...dbHeaders, Prefer: "count=exact" } }
-      );
-      const total = parseInt(r.headers.get("content-range")?.split("/")[1] || "0", 10);
-      userHistoryTotal.current = total;
-      const data = await r.json();
-
-      return (data || []).map(h => ({
-        roundId: h.round_id,
-        cell: h.cell,
-        won: h.is_winner,
-        resolved: true,
-        stakedWei: h.amount_wei || "0",
-        // exact on-chain pro-rata payout, written by the keeper
-        amountWei: h.is_winner ? (h.payout_wei || "0") : (h.amount_wei || "0"),
-      }));
+      const [mine, paid] = await Promise.all([
+        publicClient.getContractEvents({
+          address: GRID_ADDR, abi: GRID_ABI, eventName: "Staked",
+          args: { player: address }, fromBlock: 0n, toBlock: "latest",
+        }),
+        publicClient.getContractEvents({
+          address: GRID_ADDR, abi: GRID_ABI, eventName: "WinningsPaid",
+          args: { player: address }, fromBlock: 0n, toBlock: "latest",
+        }),
+      ]);
+      // exact ETH received per round, straight from the payout event
+      const payouts = new Map();
+      for (const p of paid) {
+        const k = Number(p.args.roundId);
+        payouts.set(k, (payouts.get(k) || 0n) + p.args.ethAmount);
+      }
+      // my total stake per (round, cell)
+      const byKey = new Map();
+      for (const l of mine) {
+        const k = `${l.args.roundId}-${l.args.cell}`;
+        byKey.set(k, {
+          roundId: Number(l.args.roundId),
+          cell: Number(l.args.cell),
+          stakedWei: l.args.playerCellTotal.toString(),
+        });
+      }
+      const rows = [...byKey.values()]
+        .sort((a, b) => b.roundId - a.roundId)
+        .map((r) => {
+          const won = payouts.has(r.roundId);
+          return {
+            ...r,
+            won,
+            resolved: true,
+            amountWei: won ? payouts.get(r.roundId).toString() : r.stakedWei,
+          };
+        });
+      userHistoryTotal.current = rows.length;
+      return rows.slice(offset, offset + limit);
     } catch (e) {
-      console.error("User history fetch error:", e);
+      console.error("user history error:", e);
       return [];
     }
   };
